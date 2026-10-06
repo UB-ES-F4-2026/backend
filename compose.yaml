@@ -1,0 +1,117 @@
+name: fintech-local
+
+x-database-environment: &database-environment
+  POSTGRES_DB: ${POSTGRES_DB:-fintech}
+  POSTGRES_USER: ${POSTGRES_USER:-fintech}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fintech_local}
+  DB_HOST: db
+  DB_PORT: "5432"
+
+services:
+  db:
+    image: postgres:17-bookworm
+    environment: *database-environment
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 4s
+      retries: 15
+      start_period: 15s
+
+  backend:
+    build:
+      context: .
+    environment: *database-environment
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
+    command: ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    volumes:
+      # Keep generated revisions in the repository, not only in the container.
+      - ./alembic:/app/alembic
+      - ./alembic.ini:/app/alembic.ini:ro
+    init: true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 5s
+      timeout: 4s
+      retries: 20
+      start_period: 20s
+    develop:
+      watch:
+        - action: sync
+          path: ./app
+          target: /app/app
+          ignore: ["__pycache__/", "*.pyc"]
+        - action: rebuild
+          path: ./requirements.txt
+        - action: rebuild
+          path: ./Dockerfile
+
+  frontend:
+    build:
+      context: ${FRONTEND_PATH:-../frontend}
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-5173}:5173"
+    environment:
+      API_PROXY_TARGET: http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    init: true
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5173/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 4s
+      retries: 12
+      start_period: 10s
+    develop:
+      watch:
+        - action: sync
+          path: ${FRONTEND_PATH:-../frontend}/src
+          target: /app/src
+        - action: sync
+          path: ${FRONTEND_PATH:-../frontend}/index.html
+          target: /app/index.html
+        - action: sync+restart
+          path: ${FRONTEND_PATH:-../frontend}/vite.config.js
+          target: /app/vite.config.js
+        - action: rebuild
+          path: ${FRONTEND_PATH:-../frontend}/package.json
+        - action: rebuild
+          path: ${FRONTEND_PATH:-../frontend}/package-lock.json
+        - action: rebuild
+          path: ${FRONTEND_PATH:-../frontend}/Dockerfile
+
+  pgadmin:
+    build:
+      context: ./docker/pgadmin
+    environment:
+      <<: *database-environment
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@example.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin_local_change_me}
+      PGADMIN_LISTEN_PORT: "5050"
+      PGADMIN_DISABLE_POSTFIX: "1"
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${PGADMIN_PORT:-5050}:5050"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    healthcheck:
+      test: ["CMD", "/venv/bin/python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5050/misc/ping', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 45s
+
+volumes:
+  postgres_data:
+  pgadmin_data:
