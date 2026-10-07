@@ -18,11 +18,11 @@ class Base(DeclarativeBase):
 
 database_url = URL.create(
     "postgresql+psycopg",
-    username=os.getenv("POSTGRES_USER", "fintech"),
-    password=os.getenv("POSTGRES_PASSWORD", "fintech_local"),
-    host=os.getenv("DB_HOST", "localhost"),
-    port=int(os.getenv("DB_PORT", "5432")),
-    database=os.getenv("POSTGRES_DB", "fintech"),
+    username=os.environ["POSTGRES_USER"],
+    password=os.environ["POSTGRES_PASSWORD"],
+    host=os.environ["DB_HOST"],
+    port=int(os.environ["DB_PORT"]),
+    database=os.environ["POSTGRES_DB"],
 )
 engine = create_engine(
     database_url,

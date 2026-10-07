@@ -1,9 +1,9 @@
 name: fintech-local
 
 x-database-environment: &database-environment
-  POSTGRES_DB: ${POSTGRES_DB:-fintech}
-  POSTGRES_USER: ${POSTGRES_USER:-fintech}
-  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fintech_local}
+  POSTGRES_DB: ${POSTGRES_DB:?Falta POSTGRES_DB - configura backend/.env a partir de .env.example}
+  POSTGRES_USER: ${POSTGRES_USER:?Falta POSTGRES_USER - configura backend/.env a partir de .env.example}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD - configura backend/.env a partir de .env.example}
   DB_HOST: db
   DB_PORT: "5432"
 
@@ -12,7 +12,7 @@ services:
     image: postgres:17-bookworm
     environment: *database-environment
     ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:?Falta POSTGRES_PORT - configura backend/.env a partir de .env.example}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -30,7 +30,7 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
+      - "127.0.0.1:${BACKEND_PORT:?Falta BACKEND_PORT - configura backend/.env a partir de .env.example}:8000"
     command: ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     volumes:
       # Keep generated revisions in the repository, not only in the container.
@@ -56,9 +56,9 @@ services:
 
   frontend:
     build:
-      context: ${FRONTEND_PATH:-../frontend}
+      context: ${FRONTEND_PATH:?Falta FRONTEND_PATH - configura backend/.env a partir de .env.example}
     ports:
-      - "127.0.0.1:${FRONTEND_PORT:-5173}:5173"
+      - "127.0.0.1:${FRONTEND_PORT:?Falta FRONTEND_PORT - configura backend/.env a partir de .env.example}:5173"
     environment:
       API_PROXY_TARGET: http://backend:8000
     depends_on:
@@ -74,35 +74,35 @@ services:
     develop:
       watch:
         - action: sync
-          path: ${FRONTEND_PATH:-../frontend}/src
+          path: ${FRONTEND_PATH:?Falta FRONTEND_PATH - configura backend/.env a partir de .env.example}/src
           target: /app/src
         - action: sync
-          path: ${FRONTEND_PATH:-../frontend}/index.html
+          path: ${FRONTEND_PATH:?Falta FRONTEND_PATH - configura backend/.env a partir de .env.example}/index.html
           target: /app/index.html
         - action: sync+restart
-          path: ${FRONTEND_PATH:-../frontend}/vite.config.js
+          path: ${FRONTEND_PATH:?Falta FRONTEND_PATH - configura backend/.env a partir de .env.example}/vite.config.js
           target: /app/vite.config.js
         - action: rebuild
-          path: ${FRONTEND_PATH:-../frontend}/package.json
+          path: ${FRONTEND_PATH:?Falta FRONTEND_PATH - configura backend/.env a partir de .env.example}/package.json
         - action: rebuild
-          path: ${FRONTEND_PATH:-../frontend}/package-lock.json
+          path: ${FRONTEND_PATH:?Falta FRONTEND_PATH - configura backend/.env a partir de .env.example}/package-lock.json
         - action: rebuild
-          path: ${FRONTEND_PATH:-../frontend}/Dockerfile
+          path: ${FRONTEND_PATH:?Falta FRONTEND_PATH - configura backend/.env a partir de .env.example}/Dockerfile
 
   pgadmin:
     build:
       context: ./docker/pgadmin
     environment:
       <<: *database-environment
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@example.com}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin_local_change_me}
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:?Falta PGADMIN_DEFAULT_EMAIL - configura backend/.env a partir de .env.example}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:?Falta PGADMIN_DEFAULT_PASSWORD - configura backend/.env a partir de .env.example}
       PGADMIN_LISTEN_PORT: "5050"
       PGADMIN_DISABLE_POSTFIX: "1"
     depends_on:
       db:
         condition: service_healthy
     ports:
-      - "127.0.0.1:${PGADMIN_PORT:-5050}:5050"
+      - "127.0.0.1:${PGADMIN_PORT:?Falta PGADMIN_PORT - configura backend/.env a partir de .env.example}:5050"
     volumes:
       - pgadmin_data:/var/lib/pgadmin
     healthcheck:
