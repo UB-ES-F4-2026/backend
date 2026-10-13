@@ -25,7 +25,9 @@ services:
   backend:
     build:
       context: .
-    environment: *database-environment
+    environment:
+      <<: *database-environment
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Falta JWT_SECRET_KEY - configura backend/.env a partir de .env.example}
     depends_on:
       db:
         condition: service_healthy
