@@ -75,6 +75,10 @@ class AuthTest(unittest.TestCase):
         self.assertEqual(self.login("bob@example.com", "wrong-password").status_code, 401)
         self.assertEqual(self.login("nobody@example.com").status_code, 401)
 
+    def test_login_rejects_password_longer_than_72_characters(self):
+        response = self.login("nobody@example.com", "a" * 73)
+        self.assertEqual(response.status_code, 422)
+
     def test_me_requires_valid_token(self):
         self.assertEqual(self.client.get("/api/auth/me").status_code, 401)
         response = self.client.get("/api/auth/me", headers={"Authorization": "Bearer garbage"})
