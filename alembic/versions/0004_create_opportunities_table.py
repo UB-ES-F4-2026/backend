@@ -1,7 +1,7 @@
 """create opportunities table
 
-Revision ID: 0003
-Revises: 0002
+Revision ID: 0004
+Revises: 0003
 """
 from typing import Sequence, Union
 
@@ -9,8 +9,9 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = "0003"
-down_revision: Union[str, Sequence[str], None] = "0002"
+
+revision: str = "0004"
+down_revision: Union[str, Sequence[str], None] = "0003"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
