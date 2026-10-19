@@ -2,8 +2,8 @@
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, Request, status
-from sqlalchemy import update
+from fastapi import Depends, HTTPException, Request, Response, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.security import SESSION_COOKIE, hash_session_token
@@ -12,6 +12,22 @@ from app.models.session import SESSION_IDLE_TIMEOUT, UserSession
 from app.models.user import User
 
 DbSession = Annotated[Session, Depends(get_db)]
+
+
+def expired_session_exception() -> HTTPException:
+    cookie_response = Response()
+    cookie_response.delete_cookie(
+        SESSION_COOKIE,
+        path="/",
+        secure=True,
+        httponly=True,
+        samesite="lax",
+    )
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or missing session",
+        headers={"Set-Cookie": cookie_response.headers["set-cookie"]},
+    )
 
 
 def get_current_user(request: Request, db: DbSession) -> User:
@@ -28,22 +44,22 @@ def get_current_user(request: Request, db: DbSession) -> User:
     if not token:
         raise unauthorized
 
-    # Check and renew in one statement: expires_at = this request + 60 min.
     now = datetime.now(UTC)
-    user_id = db.scalar(
-        update(UserSession)
-        .where(
-            UserSession.token == hash_session_token(token),
-            UserSession.expires_at > now,
-        )
-        .values(expires_at=now + SESSION_IDLE_TIMEOUT)
-        .returning(UserSession.user_id)
+    session = db.scalar(
+        select(UserSession).where(UserSession.token == hash_session_token(token))
     )
-    if user_id is None:
+    if session is None:
         raise unauthorized
+
+    if session.expires_at <= now:
+        db.delete(session)
+        db.commit()
+        raise expired_session_exception()
+
+    session.touch()
     db.commit()
 
-    user = db.get(User, user_id)
+    user = db.get(User, session.user_id)
     if user is None:
         raise unauthorized
     return user
