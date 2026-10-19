@@ -1,13 +1,10 @@
-"""Password hashing and JWT access tokens."""
-import os
-from datetime import UTC, datetime, timedelta
+"""Password hashing and session tokens."""
+import hashlib
+import secrets
 
 import bcrypt
-import jwt
 
-SECRET_KEY = os.environ["JWT_SECRET_KEY"]
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
+SESSION_COOKIE = "session"
 
 
 def hash_password(password: str) -> str:
@@ -22,15 +19,11 @@ def verify_password(password: str, hashed_password: str) -> bool:
 DUMMY_HASH = hash_password("dummy-password")
 
 
-def create_access_token(user_id: int) -> str:
-    expire = datetime.now(UTC) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    return jwt.encode({"sub": str(user_id), "exp": expire}, SECRET_KEY, algorithm=ALGORITHM)
+def generate_session_token() -> str:
+    """Random, unguessable token given to the client (256 bits)."""
+    return secrets.token_urlsafe(32)
 
 
-def decode_access_token(token: str) -> int | None:
-    """Return the user id, or None if the token is invalid or expired."""
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return int(payload["sub"])
-    except (jwt.InvalidTokenError, KeyError, ValueError):
-        return None
+def hash_session_token(token: str) -> str:
+    """What the sessions table stores, so a database leak exposes no usable tokens."""
+    return hashlib.sha256(token.encode()).hexdigest()
