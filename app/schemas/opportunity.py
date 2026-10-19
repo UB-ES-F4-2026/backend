@@ -32,4 +32,5 @@ class OpportunityCreate(BaseModel):
     location: str = Field(min_length=1, max_length=255)
     cover_image_url: str | None = Field(default=None, max_length=2048)
     target_amount_cents: int = Field(gt=0)
+    committed_cents: int = Field(default=0, ge=0)
     deadline: datetime

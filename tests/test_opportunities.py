@@ -63,6 +63,7 @@ class OpportunitiesTest(unittest.TestCase):
             "location": "Barcelona",
             "cover_image_url": None,
             "target_amount_cents": 25000000,
+            "committed_cents": 10000,
             "deadline": (datetime.now(UTC) + timedelta(days=30)).isoformat(),
         }
         body.update(changes)
@@ -86,7 +87,7 @@ class OpportunitiesTest(unittest.TestCase):
         self.assertEqual(response.status_code, 201)
         body = response.json()
         self.assertEqual(body["user_id"], self.user.id)
-        self.assertEqual(body["committed_cents"], 0)
+        self.assertEqual(body["committed_cents"], 10000)
         self.assertEqual(body["type"], "real_estate")
 
     def test_create_opportunity_rejects_invalid_data(self):

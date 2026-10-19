@@ -23,6 +23,7 @@ def create_opportunity(
         location=body.location,
         cover_image_url=body.cover_image_url,
         target_amount_cents=body.target_amount_cents,
+        committed_cents=body.committed_cents,
         deadline=body.deadline,
     )
     db.add(opportunity)
