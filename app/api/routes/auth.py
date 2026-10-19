@@ -50,16 +50,18 @@ def login(body: LoginRequest, db: DbSession, response: Response) -> User:
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-def logout(request: Request, response: Response, db: DbSession) -> None:
-    token = request.cookies.get(SESSION_COOKIE)
-    if token is not None:
-        session = db.scalar(
-            select(UserSession).where(UserSession.token == hash_session_token(token))
-        )
-        if session is not None:
-            db.delete(session)
-            db.commit()
-
+def logout(
+    _current_user: CurrentUser,
+    request: Request,
+    response: Response,
+    db: DbSession,
+) -> None:
+    token = request.cookies[SESSION_COOKIE]
+    session = db.scalar(
+        select(UserSession).where(UserSession.token == hash_session_token(token))
+    )
+    db.delete(session)
+    db.commit()
     response.delete_cookie(
         SESSION_COOKIE,
         path="/",

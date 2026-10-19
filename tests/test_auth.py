@@ -171,6 +171,11 @@ class AuthTest(unittest.TestCase):
         self.assertEqual(self.sessions_of(email), [])
         self.assertEqual(self.me(token).status_code, 401)
 
+    def test_logout_requires_an_active_session(self):
+        response = self.client.post("/api/auth/logout")
+
+        self.assertEqual(response.status_code, 401)
+
     def test_valid_request_renews_expiry_to_now_plus_60_minutes(self):
         email = self.new_email()
         self.register(email)
