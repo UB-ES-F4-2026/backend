@@ -25,6 +25,11 @@ class OpportunityRead(BaseModel):
     updated_at: datetime
 
 
+class OpportunityList(BaseModel):
+    items: list[OpportunityRead]
+    message: str | None = None
+
+
 class OpportunityCreate(BaseModel):
     type: OpportunityType
     title: str = Field(min_length=1, max_length=255)

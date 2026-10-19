@@ -12,6 +12,7 @@ from sqlalchemy.orm import sessionmaker
 from app.api.deps import get_current_user
 from app.database import engine, get_db
 from app.main import app
+from app.models.opportunity import Opportunity, OpportunityStatus
 from app.models.user import User
 
 
@@ -89,6 +90,8 @@ class OpportunitiesTest(unittest.TestCase):
         self.assertEqual(body["user_id"], self.user.id)
         self.assertEqual(body["committed_cents"], 10000)
         self.assertEqual(body["type"], "real_estate")
+        self.assertIsNotNone(body["date_published"])
+        self.assertNotIn("status", body)
 
     def test_create_opportunity_rejects_invalid_data(self):
         response = self.client.post(
@@ -113,6 +116,58 @@ class OpportunitiesTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["id"], opportunity_id)
         self.assertEqual(response.json()["type"], "equity")
+
+    def create_database_opportunity(self, **changes):
+        values = {
+            "user_id": self.user.id,
+            "type": "real_estate",
+            "status": OpportunityStatus.PUBLISHED,
+            "title": "Database opportunity",
+            "description": "A database opportunity",
+            "location": "Barcelona",
+            "target_amount_cents": 10000,
+            "committed_cents": 0,
+            "deadline": datetime.now(UTC) + timedelta(days=30),
+        }
+        values.update(changes)
+        opportunity = Opportunity(**values)
+        self.session.add(opportunity)
+        self.session.commit()
+        self.session.refresh(opportunity)
+        return opportunity
+
+    def test_catalog_includes_only_available_opportunities(self):
+        available = self.create_database_opportunity()
+        self.create_database_opportunity(status=OpportunityStatus.DRAFT)
+        self.create_database_opportunity(status=OpportunityStatus.REJECTED)
+        self.create_database_opportunity(
+            committed_cents=10000,
+        )
+        self.create_database_opportunity(
+            deadline=datetime.now(UTC) - timedelta(minutes=1),
+        )
+        self.create_database_opportunity(
+            date_closed=datetime.now(UTC),
+        )
+
+        response = self.client.get("/api/opportunities")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([item["id"] for item in response.json()["items"]], [available.id])
+        self.assertIsNone(response.json()["message"])
+
+    def test_empty_catalog_returns_message(self):
+        self.session.query(Opportunity).delete()
+        self.session.commit()
+
+        response = self.client.get("/api/opportunities")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["items"], [])
+        self.assertEqual(
+            response.json()["message"],
+            "No opportunities available at the moment",
+        )
 
     def test_get_unknown_opportunity_returns_not_found(self):
         response = self.client.get("/api/opportunities/999999")

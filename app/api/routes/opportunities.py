@@ -1,10 +1,12 @@
 """Read investment opportunities."""
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import and_, select
 
 from app.api.deps import CurrentUser, DbSession
-from app.models.opportunity import Opportunity
-from app.schemas.opportunity import OpportunityCreate, OpportunityRead
+from app.models.opportunity import Opportunity, OpportunityStatus
+from app.schemas.opportunity import OpportunityCreate, OpportunityList, OpportunityRead
 
 router = APIRouter(prefix="/api/opportunities", tags=["opportunities"])
 
@@ -25,6 +27,7 @@ def create_opportunity(
         target_amount_cents=body.target_amount_cents,
         committed_cents=body.committed_cents,
         deadline=body.deadline,
+        date_published=datetime.now(UTC),
     )
     db.add(opportunity)
     db.commit()
@@ -32,24 +35,35 @@ def create_opportunity(
     return opportunity
 
 
-@router.get("", response_model=list[OpportunityRead])
-def list_opportunities(
-    db: DbSession,
-    skip: int = 0,
-    limit: int = 100,
-) -> list[Opportunity]:
+def available_opportunity_filter():
+    return and_(
+        Opportunity.status == OpportunityStatus.PUBLISHED,
+        Opportunity.deadline > datetime.now(UTC),
+        Opportunity.committed_cents < Opportunity.target_amount_cents,
+        Opportunity.date_closed.is_(None),
+    )
+
+
+@router.get("", response_model=OpportunityList)
+def get_opportunities(db: DbSession):
     opportunities = db.scalars(
         select(Opportunity)
+        .where(available_opportunity_filter())
         .order_by(Opportunity.created_at.desc())
-        .offset(skip)
-        .limit(limit)
     ).all()
-    return list(opportunities)
+    return OpportunityList(
+        items=list(opportunities),
+        message=None if opportunities else "No opportunities available at the moment",
+    )
 
 
 @router.get("/{opportunity_id}", response_model=OpportunityRead)
 def get_opportunity(opportunity_id: int, db: DbSession) -> Opportunity:
-    opportunity = db.get(Opportunity, opportunity_id)
+    opportunity = db.scalar(
+        select(Opportunity).where(
+            Opportunity.id == opportunity_id
+        )
+    )
     if opportunity is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

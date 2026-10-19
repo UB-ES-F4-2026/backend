@@ -22,6 +22,14 @@ class OpportunityType(str, Enum):
     EQUITY = "equity"
 
 
+class OpportunityStatus(str, Enum):
+    DRAFT = "draft"
+    PUBLISHED = "published"
+    FUNDED = "funded"
+    REJECTED = "rejected"
+    CLOSED = "closed"
+
+
 class Opportunity(Base):
     __tablename__ = "opportunities"
     __table_args__ = (
@@ -40,6 +48,16 @@ class Opportunity(Base):
             native_enum=True,
             values_callable=lambda enum: [member.value for member in enum],
         )
+    )
+    status: Mapped[OpportunityStatus] = mapped_column(
+        SqlEnum(
+            OpportunityStatus,
+            name="opportunity_status",
+            native_enum=True,
+            values_callable=lambda enum: [member.value for member in enum],
+        ),
+        default=OpportunityStatus.PUBLISHED,  # Canviar quan afegim el rol de verificador
+        server_default=OpportunityStatus.PUBLISHED.value,
     )
     title: Mapped[str] = mapped_column(String(255))
     description: Mapped[str] = mapped_column(Text)
