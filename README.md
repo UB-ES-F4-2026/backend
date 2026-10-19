@@ -194,7 +194,6 @@ Edita `.env` segons les teves necessitats:
 | `PGADMIN_PORT` | `5050` | Port de pgAdmin |
 | `PGADMIN_DEFAULT_EMAIL` | `admin@example.com` | Usuari de pgAdmin |
 | `PGADMIN_DEFAULT_PASSWORD` | `fintech` | Contrasenya de pgAdmin |
-| `JWT_SECRET_KEY` | `canvia-aquesta-clau-local` | Clau per signar els tokens de sessió; genera'n una de pròpia |
 
 Si el port 8000 està ocupat, posa `BACKEND_PORT=8001` a `.env` i torna a executar `docker compose up --build --wait`. No cal canviar el codi de React.
 
