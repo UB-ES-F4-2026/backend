@@ -1,5 +1,5 @@
 """Register, log in and fetch the logged-in user."""
-from fastapi import APIRouter, HTTPException, Response, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
@@ -47,6 +47,28 @@ def login(body: LoginRequest, db: DbSession, response: Response) -> User:
         SESSION_COOKIE, token, httponly=True, secure=True, samesite="lax", path="/"
     )
     return user
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout(
+    _current_user: CurrentUser,
+    request: Request,
+    response: Response,
+    db: DbSession,
+) -> None:
+    token = request.cookies[SESSION_COOKIE]
+    session = db.scalar(
+        select(UserSession).where(UserSession.token == hash_session_token(token))
+    )
+    db.delete(session)
+    db.commit()
+    response.delete_cookie(
+        SESSION_COOKIE,
+        path="/",
+        secure=True,
+        httponly=True,
+        samesite="lax",
+    )
 
 
 @router.get("/me", response_model=UserRead)

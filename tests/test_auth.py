@@ -154,7 +154,27 @@ class AuthTest(unittest.TestCase):
                 .values(expires_at=datetime.now(UTC) - timedelta(seconds=1))
             )
             db.commit()
+        response = self.me(token)
+        self.assertEqual(response.status_code, 401)
+        self.assertIn("session=", response.headers["set-cookie"].lower())
+        self.assertEqual(self.sessions_of(email), [])
+
+    def test_logout_deletes_session_and_cookie(self):
+        email = self.new_email()
+        self.register(email)
+        token = self.login(email).cookies[SESSION_COOKIE]
+
+        response = self.client.post("/api/auth/logout")
+
+        self.assertEqual(response.status_code, 204)
+        self.assertIn("max-age=0", response.headers["set-cookie"].lower())
+        self.assertEqual(self.sessions_of(email), [])
         self.assertEqual(self.me(token).status_code, 401)
+
+    def test_logout_requires_an_active_session(self):
+        response = self.client.post("/api/auth/logout")
+
+        self.assertEqual(response.status_code, 401)
 
     def test_valid_request_renews_expiry_to_now_plus_60_minutes(self):
         email = self.new_email()
