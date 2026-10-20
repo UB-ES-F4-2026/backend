@@ -1,0 +1,37 @@
+# Independent CI environment. Run with -f compose.ci.yaml only.
+name: fintech-ci
+
+x-database-environment: &database-environment
+  POSTGRES_DB: fintech_ci
+  POSTGRES_USER: fintech_ci
+  POSTGRES_PASSWORD: ci_disposable_password
+  DB_HOST: db
+  DB_PORT: "5432"
+
+services:
+  db:
+    image: postgres:17-bookworm
+    environment: *database-environment
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fintech_ci -d fintech_ci"]
+      interval: 5s
+      timeout: 4s
+      retries: 20
+    # CI data is temporary and never uses the local development volume.
+    tmpfs:
+      - /var/lib/postgresql/data
+
+  backend:
+    build:
+      context: .
+    environment: *database-environment
+    depends_on:
+      db:
+        condition: service_healthy
+    init: true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 5s
+      timeout: 4s
+      retries: 20
+      start_period: 20s
