@@ -153,21 +153,16 @@ class OpportunitiesTest(unittest.TestCase):
         response = self.client.get("/api/opportunities")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual([item["id"] for item in response.json()["items"]], [available.id])
-        self.assertIsNone(response.json()["message"])
+        self.assertEqual([item["id"] for item in response.json()], [available.id])
 
-    def test_empty_catalog_returns_message(self):
+    def test_empty_catalog_returns_empty_list(self):
         self.session.query(Opportunity).delete()
         self.session.commit()
 
         response = self.client.get("/api/opportunities")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["items"], [])
-        self.assertEqual(
-            response.json()["message"],
-            "No opportunities available at the moment",
-        )
+        self.assertEqual(response.json(), [])
 
     def test_get_unknown_opportunity_returns_not_found(self):
         response = self.client.get("/api/opportunities/999999")

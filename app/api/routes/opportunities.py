@@ -6,7 +6,7 @@ from sqlalchemy import and_, select
 
 from app.api.deps import CurrentUser, DbSession
 from app.models.opportunity import Opportunity, OpportunityStatus
-from app.schemas.opportunity import OpportunityCreate, OpportunityList, OpportunityRead
+from app.schemas.opportunity import OpportunityCreate, OpportunityRead
 
 router = APIRouter(prefix="/api/opportunities", tags=["opportunities"])
 
@@ -44,17 +44,14 @@ def available_opportunity_filter():
     )
 
 
-@router.get("", response_model=OpportunityList)
+@router.get("", response_model=list[OpportunityRead])
 def get_opportunities(db: DbSession):
     opportunities = db.scalars(
         select(Opportunity)
         .where(available_opportunity_filter())
         .order_by(Opportunity.created_at.desc())
     ).all()
-    return OpportunityList(
-        items=list(opportunities),
-        message=None if opportunities else "No opportunities available at the moment",
-    )
+    return opportunities
 
 
 @router.get("/{opportunity_id}", response_model=OpportunityRead)
