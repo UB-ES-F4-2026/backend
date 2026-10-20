@@ -9,7 +9,7 @@ x-database-environment: &database-environment
 
 services:
   db:
-    image: postgres:17-bookworm
+    image: docker.io/library/postgres:17-bookworm
     environment: *database-environment
     ports:
       - "127.0.0.1:${POSTGRES_PORT:?Falta POSTGRES_PORT - configura backend/.env a partir de .env.example}:5432"
