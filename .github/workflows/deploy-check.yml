@@ -1,0 +1,82 @@
+name: Deploy - Check SSH
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: fintech-deploy-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify SSH and deployment prerequisites (read only)
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+          DEPLOY_KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          for name in DEPLOY_HOST DEPLOY_USER DEPLOY_PORT DEPLOY_PATH DEPLOY_KNOWN_HOSTS DEPLOY_SSH_KEY; do
+            if [[ -z "${!name}" ]]; then
+              printf '::error::Missing configuration: %s\n' "$name"
+              exit 1
+            fi
+          done
+          [[ "$DEPLOY_HOST" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*$ ]] || exit 1
+          [[ "$DEPLOY_USER" =~ ^[a-z_][a-z0-9_-]*$ ]] || exit 1
+          [[ "$DEPLOY_PORT" =~ ^[0-9]{1,5}$ ]] || exit 1
+          (( 10#$DEPLOY_PORT >= 1 && 10#$DEPLOY_PORT <= 65535 )) || exit 1
+          # Restrict the path before placing it in the remote shell command.
+          [[ "$DEPLOY_PATH" =~ ^/app/[a-zA-Z0-9_-]+$ ]] || exit 1
+
+          umask 077
+          ssh_dir=$(mktemp -d "$RUNNER_TEMP/fintech-ssh.XXXXXX")
+          trap 'rm -f -- "$ssh_dir/key" "$ssh_dir/known_hosts"; rmdir -- "$ssh_dir"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$ssh_dir/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | tr -d '\r' > "$ssh_dir/known_hosts"
+          unset DEPLOY_SSH_KEY
+          ssh-keygen -y -P '' -f "$ssh_dir/key" > /dev/null
+
+          ssh -F /dev/null -T -p "$DEPLOY_PORT" -i "$ssh_dir/key" \
+            -o BatchMode=yes -o IdentitiesOnly=yes -o IdentityAgent=none \
+            -o StrictHostKeyChecking=yes -o UpdateHostKeys=no \
+            -o "UserKnownHostsFile=$ssh_dir/known_hosts" \
+            -o GlobalKnownHostsFile=/dev/null \
+            -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 \
+            "$DEPLOY_USER@$DEPLOY_HOST" "bash -s -- '$DEPLOY_PATH' '$DEPLOY_USER'" <<'REMOTE'
+          set -euo pipefail
+          deploy_path=$1
+          expected_user=$2
+          [[ "$(id -un)" == "$expected_user" ]]
+          [[ -d "$deploy_path" && -r "$deploy_path" && -w "$deploy_path" && -x "$deploy_path" ]] || {
+            printf 'Deployment directory missing or not accessible: %s\n' "$deploy_path"
+            exit 1
+          }
+          printf 'SSH identity and directory permissions: OK\n'
+          docker version --format 'Docker server: {{.Server.Version}}'
+          docker compose version
+          # Avoid exposing other applications in public repository logs.
+          docker ps --filter label=com.docker.compose.project=fintech-prod \
+            --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+          free -m
+          df -h "$deploy_path"
+          for port in 80 443; do
+            if ss -H -ltn "sport = :$port" | grep -q .; then
+              printf 'Port %s occupied: integrate with the existing proxy.\n' "$port"
+            else
+              printf 'Port %s has no TCP listener.\n' "$port"
+            fi
+          done
+          printf 'Read-only preflight completed. No application deployed.\n'
+          REMOTE
+          printf '### SSH preflight passed\nIdentity, directory permissions and Docker access verified. No services changed.\n' >> "$GITHUB_STEP_SUMMARY"
