@@ -27,6 +27,8 @@ database_url = URL.create(
 engine = create_engine(
     database_url,
     pool_pre_ping=True,
+    pool_size=int(os.environ.get("DB_POOL_SIZE", "5")),
+    max_overflow=int(os.environ.get("DB_MAX_OVERFLOW", "10")),
     connect_args={"connect_timeout": 3},
 )
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
