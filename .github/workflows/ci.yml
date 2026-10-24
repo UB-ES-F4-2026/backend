@@ -19,7 +19,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
       - name: Build and start isolated services
         run: docker compose -f compose.ci.yaml up --build --wait --wait-timeout 180
       - name: Run backend tests
@@ -30,3 +32,62 @@ jobs:
       - name: Remove temporary CI services and data
         if: always()
         run: docker compose -f compose.ci.yaml down --volumes --remove-orphans
+
+  production-checks:
+    name: Backend production tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Validate production configuration
+        run: docker compose --env-file production.env.example -f compose.production.yaml config --quiet
+      - name: Build production image and migrate isolated database
+        run: docker compose -f compose.production-ci.yaml up --build --wait --wait-timeout 180
+      - name: Run tests against production backend
+        run: docker compose -f compose.production-ci.yaml exec -T backend python -m unittest discover -s tests -v
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose -f compose.production-ci.yaml logs --no-color
+      - name: Clean isolated services
+        if: always()
+        run: docker compose -f compose.production-ci.yaml down --volumes --remove-orphans
+
+  required-checks:
+    name: Backend required checks
+    if: always()
+    needs: [backend-checks, production-checks]
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          DEVELOPMENT: ${{ needs.backend-checks.result }}
+          PRODUCTION: ${{ needs.production-checks.result }}
+        run: test "$DEVELOPMENT" = success && test "$PRODUCTION" = success
+
+  publish:
+    name: Publish backend image
+    needs: required-checks
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Build and publish versioned image
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${GITHUB_REPOSITORY,,}:$GITHUB_SHA"
+          docker build --file Dockerfile.production --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" --label "org.opencontainers.image.revision=$GITHUB_SHA" --tag "$image" .
+          trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker push "$image"
+          docker pull "$image"
+          digest=$(docker image inspect --format '{{index .RepoDigests 0}}' "$image")
+          printf '### Backend image\nCommit: `%s`\n\n`%s`\n' "$GITHUB_SHA" "$digest" >> "$GITHUB_STEP_SUMMARY"
