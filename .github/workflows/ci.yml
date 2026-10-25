@@ -5,12 +5,6 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      deploy:
-        description: 'Deploy this main revision to production after tests'
-        type: boolean
-        required: true
-        default: false
 
 permissions:
   contents: read
@@ -78,7 +72,7 @@ jobs:
   publish:
     name: Publish backend image
     needs: required-checks
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy))
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.required-checks.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
@@ -114,8 +108,8 @@ jobs:
 
   deploy:
     name: Deploy backend
-    needs: publish
-    if: github.event_name == 'workflow_dispatch' && inputs.deploy && github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true'
+    needs: [required-checks, publish]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true' && needs.required-checks.result == 'success' && needs.publish.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:
