@@ -15,7 +15,7 @@ async def lifespan(app: FastAPI):
     engine.dispose()
 
 
-app = FastAPI(title="Fintech API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Fintech API", version="0.1.0", lifespan=lifespan, docs_url="/api/docs", openapi_url="/api/openapi.json")
 app.include_router(auth.router)
 app.include_router(opportunities.router)
 
