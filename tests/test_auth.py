@@ -47,8 +47,24 @@ class AuthTest(unittest.TestCase):
         # A fresh cookie jar per test. HTTPS, because the client only sends Secure cookies over it.
         self.client = TestClient(app, base_url="https://testserver")
 
-    def register(self, email, password="correct-horse"):
-        return self.client.post("/api/auth/register", json={"email": email, "password": password})
+    def register(
+        self,
+        email,
+        password="correct-horse",
+        first_name="Ana",
+        last_name="Example",
+        phone="+34612345678",
+    ):
+        return self.client.post(
+            "/api/auth/register",
+            json={
+                "email": email,
+                "password": password,
+                "first_name": first_name,
+                "last_name": last_name,
+                "phone": phone,
+            },
+        )
 
     def login(self, email, password="correct-horse"):
         return self.client.post("/api/auth/login", json={"email": email, "password": password})
@@ -73,6 +89,9 @@ class AuthTest(unittest.TestCase):
         self.assertEqual(response.status_code, 201)
         body = response.json()
         self.assertEqual(body["email"], "ana@example.com")
+        self.assertEqual(body["first_name"], "Ana")
+        self.assertEqual(body["last_name"], "Example")
+        self.assertEqual(body["phone"], "+34612345678")
         self.assertNotIn("password", body)
         self.assertNotIn("hashed_password", body)
 
@@ -126,6 +145,20 @@ class AuthTest(unittest.TestCase):
         self.assertEqual(self.register("not-an-email").status_code, 422)
         self.assertEqual(self.register("short@example.com", "1234567").status_code, 422)
 
+    def test_registration_requires_profile_fields(self):
+        response = self.client.post(
+            "/api/auth/register",
+            json={"email": self.new_email(), "password": "correct-horse"},
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_register_converts_empty_last_name_to_null(self):
+        for last_name in ("", "   "):
+            with self.subTest(last_name=repr(last_name)):
+                response = self.register(self.new_email(), last_name=last_name)
+                self.assertEqual(response.status_code, 201)
+                self.assertIsNone(response.json()["last_name"])
+
     def test_failed_login_creates_no_session_or_cookie(self):
         email = self.new_email()
         self.register(email)
@@ -138,6 +171,17 @@ class AuthTest(unittest.TestCase):
     def test_login_rejects_password_longer_than_72_characters(self):
         response = self.login("nobody@example.com", "a" * 73)
         self.assertEqual(response.status_code, 422)
+
+    def test_register_rejects_phone_with_invalid_format(self):
+        for phone in ("12345", "invalid-phone"):
+            with self.subTest(phone=phone):
+                response = self.register(self.new_email(), phone=phone)
+                self.assertEqual(response.status_code, 422)
+
+    def test_register_normalizes_valid_phone_to_e164(self):
+        response = self.register(self.new_email(), phone="+34 612 345 678")
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["phone"], "+34612345678")
 
     def test_missing_or_invalid_token_is_unauthorized(self):
         self.assertEqual(self.me().status_code, 401)
