@@ -13,6 +13,7 @@ from app.api.deps import get_current_user
 from app.database import engine, get_db
 from app.main import app
 from app.models.opportunity import Opportunity, OpportunityStatus
+from app.models.promoting_entity import PromotingEntity
 from app.models.user import User
 
 
@@ -43,6 +44,8 @@ class OpportunitiesTest(unittest.TestCase):
         cls.session.add(cls.user)
         cls.session.commit()
         cls.session.refresh(cls.user)
+        cls.session.add(PromotingEntity(user_id=cls.user.id, legal_name="Creator SL"))
+        cls.session.commit()
 
         app.dependency_overrides[get_db] = override_get_db
         app.dependency_overrides[get_current_user] = lambda: cls.user
@@ -93,6 +96,18 @@ class OpportunitiesTest(unittest.TestCase):
         self.assertIsNotNone(body["date_published"])
         self.assertNotIn("status", body)
 
+    def test_create_opportunity_requires_promoting_entity(self):
+        user = User(email="no-promoter@example.com", hashed_password="x" * 60)
+        self.session.add(user)
+        self.session.commit()
+        app.dependency_overrides[get_current_user] = lambda: user
+        response = self.client.post(
+            "/api/opportunities",
+            json=self.opportunity_body(),
+        )
+        app.dependency_overrides[get_current_user] = lambda: self.user
+        self.assertEqual(response.status_code, 403)
+
     def test_create_opportunity_rejects_invalid_data(self):
         response = self.client.post(
             "/api/opportunities",
@@ -104,7 +119,8 @@ class OpportunitiesTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 422)
 
-    def test_get_opportunity_returns_created_opportunity(self):
+    def test_get_opportunity_hides_non_real_estate_opportunities(self):
+        # US02.2.1: el detalle solo muestra oportunidades inmobiliarias.
         created = self.client.post(
             "/api/opportunities",
             json=self.opportunity_body(type="equity"),
@@ -113,9 +129,7 @@ class OpportunitiesTest(unittest.TestCase):
 
         response = self.client.get(f"/api/opportunities/{opportunity_id}")
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["id"], opportunity_id)
-        self.assertEqual(response.json()["type"], "equity")
+        self.assertEqual(response.status_code, 404)
 
     def create_database_opportunity(self, **changes):
         values = {
@@ -128,6 +142,7 @@ class OpportunitiesTest(unittest.TestCase):
             "target_amount_cents": 10000,
             "committed_cents": 0,
             "deadline": datetime.now(UTC) + timedelta(days=30),
+            "date_published": datetime.now(UTC),
         }
         values.update(changes)
         opportunity = Opportunity(**values)
@@ -147,6 +162,7 @@ class OpportunitiesTest(unittest.TestCase):
             deadline=datetime.now(UTC) - timedelta(minutes=1),
         )
         self.create_database_opportunity(
+            status=OpportunityStatus.CLOSED,
             date_closed=datetime.now(UTC),
         )
 
