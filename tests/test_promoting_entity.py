@@ -68,6 +68,7 @@ class PromotingEntityTest(unittest.TestCase):
                 target_amount_cents=100_000_00,
                 deadline=datetime.now(UTC) + timedelta(days=30),
                 date_published=datetime.now(UTC) if published else None,
+                date_closed=datetime.now(UTC) if status == OpportunityStatus.CLOSED else None,
             ))
             db.commit()
 
@@ -125,6 +126,7 @@ class PromotingEntityTest(unittest.TestCase):
         user_id = self.log_in_new_user()
         self.client.post(URL, json={"legal_name": "Contadora SL"})
         other_user_id = self.log_in_new_user()
+        self.client.post(URL, json={"legal_name": "Otra SL"})
 
         self.add_opportunity(user_id, OpportunityStatus.PUBLISHED, published=True)
         self.add_opportunity(user_id, OpportunityStatus.CLOSED, published=True)
@@ -140,6 +142,17 @@ class PromotingEntityTest(unittest.TestCase):
         entity = self.entity_in_list(user_id)
         self.assertNotIn("email", entity)
         self.assertNotIn("hashed_password", entity)
+
+    def test_opportunities_are_deleted_with_their_promoter(self):
+        user_id = self.log_in_new_user()
+        self.client.post(URL, json={"legal_name": "Con Proyectos SL"})
+        self.add_opportunity(user_id, OpportunityStatus.PUBLISHED, published=True)
+        with self.Session() as db:
+            db.delete(db.get(User, user_id))
+            db.commit()
+            self.assertIsNone(db.scalar(
+                select(Opportunity).where(Opportunity.user_id == user_id)
+            ))
 
     def test_entity_is_deleted_with_its_user(self):
         user_id = self.log_in_new_user()
