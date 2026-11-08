@@ -52,7 +52,11 @@ class PromotingEntityTest(unittest.TestCase):
     def log_in_new_user(self) -> int:
         email = f"{uuid4().hex}@example.com"
         credentials = {"email": email, "password": "correct-horse"}
-        user_id = self.client.post("/api/auth/register", json=credentials).json()["id"]
+        # El registro exige además los datos de perfil obligatorios.
+        profile = {"first_name": "Ana", "phone": "+34612345678"}
+        response = self.client.post("/api/auth/register", json=credentials | profile)
+        self.assertEqual(response.status_code, 201, response.text)
+        user_id = response.json()["id"]
         self.assertEqual(self.client.post("/api/auth/login", json=credentials).status_code, 200)
         return user_id
 
