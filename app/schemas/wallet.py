@@ -1,26 +1,15 @@
-"""Schemas for wallet operations and payment gateway integration."""
 from pydantic import BaseModel, Field
 from typing import Literal
 
+MAX_SAFE_CENTS = 2**53 - 1
 
 class BalanceRead(BaseModel):
-    available_cents: int
-    currency: Literal["eur"] = "eur"
-
-
-class DepositIntentCreate(BaseModel):
-    amount_cents: int = Field(
-        ...,
-        ge=50,
-        description="Monto a ingresar en céntimos de euro (ej. 5000 para 50,00 €)"
+    available_cents: int = Field(
+        ge=0,
+        le=MAX_SAFE_CENTS,
+        description=(
+            "Saldo en céntimos de euro; máximo representable sin pérdida en "
+            f"JavaScript: {MAX_SAFE_CENTS}."
+        ),
     )
-
-
-class DepositIntentResponse(BaseModel):
-    client_secret: str = Field(..., description="Secreto del cliente para confirmar el pago en frontend")
-    payment_intent_id: str = Field(..., description="Identificador único del PaymentIntent en Stripe")
-
-
-class WalletBalanceResponse(BaseModel):
-    available_cents: int
     currency: Literal["eur"] = "eur"
