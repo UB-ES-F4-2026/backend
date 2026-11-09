@@ -14,6 +14,7 @@ from app.database import engine, get_db
 from app.main import app
 from app.models.session import SESSION_IDLE_TIMEOUT, UserSession
 from app.models.user import User
+from app.models.wallet import Wallet
 
 
 class AuthTest(unittest.TestCase):
@@ -94,6 +95,10 @@ class AuthTest(unittest.TestCase):
         self.assertEqual(body["phone"], "+34612345678")
         self.assertNotIn("password", body)
         self.assertNotIn("hashed_password", body)
+        with self.Session() as db:
+            user = db.scalar(select(User).where(User.email == "ana@example.com"))
+            self.assertIsNotNone(user.wallet)
+            self.assertEqual(user.wallet.available_cents, 0)
 
         response = self.login("ana@example.com")
         self.assertEqual(response.status_code, 200)
