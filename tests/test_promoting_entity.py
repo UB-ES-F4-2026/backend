@@ -51,7 +51,12 @@ class PromotingEntityTest(unittest.TestCase):
 
     def log_in_new_user(self) -> int:
         email = f"{uuid4().hex}@example.com"
-        credentials = {"email": email, "password": "correct-horse"}
+        credentials = {
+            "email": email,
+            "password": "correct-horse",
+            "first_name": "Test",
+            "phone": "+34612345678",
+        }
         user_id = self.client.post("/api/auth/register", json=credentials).json()["id"]
         self.assertEqual(self.client.post("/api/auth/login", json=credentials).status_code, 200)
         return user_id
