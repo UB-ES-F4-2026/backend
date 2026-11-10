@@ -1,0 +1,42 @@
+# Isolated tests of the production backend, without deployment credentials.
+name: fintech-production-ci
+services:
+  db:
+    image: postgres:17-bookworm
+    environment: &db-env
+      POSTGRES_DB: fintech_ci
+      POSTGRES_USER: fintech_ci
+      POSTGRES_PASSWORD: ci_disposable_password
+      DB_HOST: db
+      DB_PORT: "5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fintech_ci -d fintech_ci"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  migrate:
+    image: fintech-backend-production-ci
+    build:
+      context: .
+      dockerfile: Dockerfile.production
+    environment: *db-env
+    command: ["python", "-m", "alembic", "upgrade", "head"]
+    depends_on:
+      db:
+        condition: service_healthy
+  backend:
+    image: fintech-backend-production-ci
+    pull_policy: never
+    environment: *db-env
+    volumes:
+      - ./tests:/app/tests:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 3s
+      timeout: 4s
+      retries: 30
