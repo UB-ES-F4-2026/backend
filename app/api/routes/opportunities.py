@@ -1,12 +1,14 @@
 """Read investment opportunities."""
 from datetime import UTC, datetime
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import and_, select
 from sqlalchemy.orm import contains_eager
 
 from app.api.deps import CurrentUser, DbSession
 from app.api.routes.promoting_entity import published_projects_count, to_read
+from app.core.name_search import search_by_title
 from app.models.opportunity import Opportunity, OpportunityStatus, OpportunityType
 from app.models.promoting_entity import PromotingEntity
 from app.schemas.opportunity import (
@@ -58,13 +60,20 @@ def available_opportunity_filter():
 
 
 @router.get("", response_model=list[OpportunityRead])
-def get_opportunities(db: DbSession):
+def get_opportunities(
+    db: DbSession,
+    name: Annotated[str | None, Query(max_length=255)] = None,
+) -> list[Opportunity]:
     opportunities = db.scalars(
         select(Opportunity)
         .where(available_opportunity_filter())
         .order_by(Opportunity.created_at.desc())
     ).all()
-    return opportunities
+    # Sin búsqueda (o solo espacios) se devuelve el catálogo completo.
+    if name is None or not name.strip():
+        return list(opportunities)
+    # Solo se busca dentro del catálogo disponible.
+    return search_by_title(name, opportunities, lambda opportunity: opportunity.title)
 
 
 @router.get("/{opportunity_id}", response_model=OpportunityDetailRead)
