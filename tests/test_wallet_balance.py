@@ -6,6 +6,7 @@ from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, func, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
 from app.core.security import SESSION_COOKIE, generate_session_token, hash_session_token
@@ -67,6 +68,23 @@ class WalletBalanceTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 401)
 
+    def test_user_without_wallet_gets_zero_without_creating_a_wallet(self):
+        with self.Session() as db:
+            wallet = db.scalar(select(Wallet).where(Wallet.user_id == self.user_id))
+            db.delete(wallet)
+            db.commit()
+
+        response = self.client.get("/api/me/wallet", headers={"Cookie": self.cookie})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"available_cents": 0, "currency": "eur"})
+        self.assertEqual(response.headers["cache-control"], "no-store")
+        with self.Session() as db:
+            self.assertEqual(
+                db.scalar(select(func.count()).select_from(Wallet).where(Wallet.user_id == self.user_id)),
+                0,
+            )
+
     def test_repeated_reads_return_balance_without_mutating_wallet(self):
         with self.Session() as db:
             wallet = db.scalar(select(Wallet).where(Wallet.user_id == self.user_id))
@@ -79,15 +97,64 @@ class WalletBalanceTest(unittest.TestCase):
 
         self.assertEqual(first.status_code, 200)
         self.assertEqual(second.status_code, 200)
+        self.assertEqual(first.headers["cache-control"], "no-store")
+        self.assertEqual(second.headers["cache-control"], "no-store")
         self.assertEqual(first.json(), {"available_cents": 12345, "currency": "eur"})
         self.assertEqual(second.json(), first.json())
 
         with self.Session() as db:
             wallet = db.scalar(select(Wallet).where(Wallet.user_id == self.user_id))
-            wallet_count = db.scalar(select(func.count()).select_from(Wallet))
+            wallet_count = db.scalar(
+                select(func.count()).select_from(Wallet).where(Wallet.user_id == self.user_id)
+            )
             self.assertEqual(wallet.available_cents, original_balance)
             self.assertEqual(wallet.updated_at, original_updated_at)
             self.assertEqual(wallet_count, 1)
+
+    def test_database_rejects_negative_balance(self):
+        with self.Session() as db:
+            wallet = db.scalar(select(Wallet).where(Wallet.user_id == self.user_id))
+            wallet.available_cents = -1
+            with self.assertRaises(IntegrityError):
+                db.commit()
+            db.rollback()
+
+
+class WalletBackfillMigrationTest(unittest.TestCase):
+    def test_existing_users_without_wallet_receive_zero_balance(self):
+        database = "wallet_backfill_test_" + uuid4().hex
+        with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+            connection.execute(text(f'CREATE DATABASE "{database}"'))
+        isolated = create_engine(engine.url.set(database=database))
+        config = Config("/app/alembic.ini")
+        try:
+            with isolated.begin() as connection:
+                config.attributes["connection"] = connection
+                command.upgrade(config, "94a430e17ac4")
+
+            with isolated.begin() as connection:
+                user_id = connection.scalar(
+                    text(
+                        "INSERT INTO users (email, hashed_password) "
+                        "VALUES (:email, :password) RETURNING id"
+                    ),
+                    {"email": f"{uuid4().hex}@example.com", "password": "x" * 60},
+                )
+
+            with isolated.begin() as connection:
+                config.attributes["connection"] = connection
+                command.upgrade(config, "head")
+
+            with isolated.connect() as connection:
+                balance = connection.scalar(
+                    text("SELECT available_cents FROM wallets WHERE user_id = :user_id"),
+                    {"user_id": user_id},
+                )
+            self.assertEqual(balance, 0)
+        finally:
+            isolated.dispose()
+            with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+                connection.execute(text(f'DROP DATABASE "{database}" WITH (FORCE)'))
 
 
 if __name__ == "__main__":
