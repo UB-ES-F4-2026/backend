@@ -1,53 +1,113 @@
+
 # AGENTS.md
 
-## Scope
+## Projecte i abast
 
-These instructions apply to the entire `backend/` repository. The frontend lives in the sibling `../frontend` repository; its instructions and tests belong there.
+Aquestes instruccions s'apliquen a tot el repositori `backend/`.
 
-## Product
+Grupo F4 és una plataforma d'inversió col·lectiva que permet descobrir, finançar i seguir oportunitats d'inversió, com ara immobles, negocis i startups.
 
-Grupo F4 is a collective investment platform where users can discover, fund, and track investment opportunities. An opportunity may represent a property, a business, a startup, or another investable project.
+- Mantén una arquitectura independent del tipus d'inversió. Prioritza conceptes genèrics com `opportunity`, `investment` i `funding`.
+- Prioritza la seguretat, la integritat de les dades i les transaccions atòmiques en les operacions financeres.
+- El backend utilitza FastAPI, SQLAlchemy 2.x, PostgreSQL 17 i Alembic.
+- El frontend (React/Vite) es troba al repositori germà `../frontend`.
+- `compose.yaml` coordina `backend`, `db`, `frontend` i `pgadmin`. Executa Docker Compose des de `backend/`.
 
-- Keep the architecture investment-type agnostic. Prefer generic concepts such as `opportunity`, `project`, `investment`, and `funding`.
-- Prioritize security, data integrity, and atomic transactions for all financial operations.
+Consulta [README.md](README.md) per a la configuració local i [CI.md](CI.md) per reproduir la CI.
 
-## Language
+## Rols
 
-- **Code logic:** English. This includes variables, functions, classes, database tables, columns, and public identifiers.
-- **Visible and internal text:** Spanish. This includes API error messages, comments, and docstrings. Do not rewrite unrelated existing text.
+Selecciona el rol segons la tasca i llegeix el fitxer corresponent abans de modificar res.
 
-## Project Context
+| Rol | Responsabilitat | Instruccions |
+|---|---|---|
+| Backend | Rutes, esquemes, models, migracions i lògica de negoci | [agents/backend.md](agents/backend.md) |
+| QA | Verificació d'issues i PRs, tests i detecció d'errors | [agents/qa.md](agents/qa.md) |
+| DevOps | CI, imatges, desplegament i incidències del servidor | [agents/devops.md](agents/devops.md) |
 
-- FastAPI API for a Fintech investment platform, with SQLAlchemy 2.x and PostgreSQL.
-- Alembic manages all shared schema changes.
-- Docker Compose coordinates `backend`, `db`, `frontend`, and `pgadmin`.
-- Local configuration lives in `.env`, derived from `.env.example`; credentials are never versioned.
-- Backend startup applies pending migrations before starting FastAPI.
-- Authentication is stateful: random tokens are generated, their SHA-256 hashes are stored in `sessions`, and the client token is delivered through an `httpOnly` cookie.
+Les instruccions de frontend es troben al seu propi `AGENTS.md`.
 
-## Quick Map
+Si la petició no especifica un rol, dedueix-lo i comunica quin apliques. Els rols són perfils de comportament, no requereixen subagents.
 
-- `app/api/routes/`: HTTP endpoints and their dependencies.
-- `app/schemas/`: API input and output models.
-- `app/models/`: SQLAlchemy models.
-- `app/database.py`: engine, `Base`, and database sessions.
-- `app/start.py`: migrations and service startup.
-- `alembic/versions/`: versioned migration history.
-- `tests/`: backend `unittest` suite.
-- `compose.yaml`: services, dependencies, ports, volumes, and healthchecks.
+## Convencions
 
-## Workflow
+- Identificadors de codi, variables, funcions, classes, taules i columnes en anglès.
+- Documentació, issues, PRs, comentaris i docstrings en català.
+- Respon a l'usuari en l'idioma en què escriu.
+- No modifiquis textos existents que no estiguin relacionats amb la tasca.
+- Utilitza Python 3.13 i sintaxi moderna de tipatge.
+- Segueix les convencions existents del projecte i evita refactoritzacions innecessàries.
 
-1. Run commands from the `backend/` directory.
-2. Before working, check the repository state and preserve changes from other contributors.
-3. First, read the module that owns the behavior and the related test or route; avoid exploring the entire repository unnecessarily.
-4. Keep changes small and consistent with the existing layers.
-5. Do not edit `.env` or include secrets in commits, logs, examples, or error messages.
-6. If a change affects the schema, deliver the model and its migration in the same change.
+## Flux de treball
 
-## Validation Commands
+1. Comprova l'estat del repositori i preserva els canvis dels altres col·laboradors.
+2. Llegeix la issue i els criteris d'acceptació abans de començar.
+3. Examina primer els mòduls i tests directament relacionats amb la tasca.
+4. Treballa en una branca `task/<n>-<descripció>` per issue.
+5. Mantén els canvis petits i coherents amb l'arquitectura existent.
+6. Afegeix o actualitza tests quan canviï el comportament observable.
+7. Obre una PR cap a `main`, enllaçant la issue amb `Closes #n`.
+8. Comprova que la CI passa abans de fusionar.
 
-With Docker Desktop and `.env` ready:
+Les issues es consulten amb:
+
+```bash
+gh issue view <n> -R UB-ES-F4-2026/backend
+```
+
+Per referenciar issues del frontend, utilitza el nom complet del repositori, per exemple `UB-ES-F4-2026/frontend#13`.
+
+Abans d'executar `amend` o `rebase`, comprova la branca i el commit actual:
+
+```bash
+git branch --show-current
+git log -1
+```
+
+No afegeixis atribucions automàtiques d'assistents d'IA als commits o PRs.
+
+## Arquitectura i convencions tècniques
+
+- `app/api/routes/`: endpoints HTTP i dependències.
+- `app/schemas/`: esquemes Pydantic d'entrada i sortida.
+- `app/models/`: models SQLAlchemy.
+- `app/database.py`: motor, `Base` i sessions.
+- `app/start.py`: migracions i inicialització.
+- `alembic/versions/`: historial de migracions.
+- `tests/`: tests amb `unittest`.
+
+Utilitza SQLAlchemy 2.x amb `select(Model)`, `db.scalars()`, `db.scalar()` i `db.get()`. Evita `db.query()`.
+
+- Reutilitza `DbSession` i `CurrentUser`.
+- Conserva `ConfigDict(from_attributes=True)` als esquemes de lectura.
+- Valida les dades amb Pydantic.
+- Confirma les escriptures amb `db.commit()` i gestiona errors esperats com `IntegrityError`.
+- No afegeixis dependències noves sense aprovació de l'equip.
+- No pressuposis que `pytest`, `black` o `ruff` estan disponibles.
+
+L'autenticació utilitza tokens aleatoris, emmagatzemats com a hashes SHA-256 a `sessions`, i cookies `httpOnly`.
+
+## Base de dades i migracions
+
+- Gestiona els canvis d'esquema exclusivament amb Alembic.
+- Inclou el model i la migració corresponent en el mateix canvi.
+- No utilitzis `Base.metadata.create_all()` ni `alembic init`.
+- No modifiquis migracions que altres desenvolupadors puguin haver aplicat.
+- Revisa manualment les migracions autogenerades, especialment eliminacions i canvis de nom.
+- Si apareixen diversos Alembic `heads`, coordina'n la integració.
+- No modifiquis l'esquema manualment amb pgAdmin.
+
+Després de modificar models:
+
+```bash
+docker compose run --rm --build backend alembic revision --autogenerate -m "Describe the change"
+docker compose up --build --wait
+docker compose exec backend alembic check
+```
+
+## Validació
+
+Executa des de `backend/`:
 
 ```bash
 docker compose config --quiet
@@ -56,54 +116,33 @@ docker compose exec backend python -m unittest discover -s tests -v
 docker compose exec backend alembic check
 ```
 
-For a quick diagnosis:
+Per diagnosticar errors:
 
 ```bash
 docker compose ps -a
 docker compose logs --tail 60 backend db
 ```
 
-The complete installation, port, and troubleshooting guide is in `README.md`.
+## Seguretat i preservació de dades
 
-## Database and Migrations
+- No mostris, modifiquis ni versionis `.env`, secrets, tokens o credencials.
+- Preserva els volums `postgres_data` i `pgadmin_data`.
+- Utilitza `docker compose down` sense `-v`.
+- No executis `prune`, SQL destructiu ni eliminacions de volums per resoldre errors.
+- Investiga primer els logs i coordina qualsevol operació destructiva amb l'equip.
+- No incloguis secrets ni dades sensibles en informes d'errors.
 
-- Use Alembic for schema changes. Do not use `Base.metadata.create_all()` or `alembic init`.
-- Do not modify a migration that another contributor may already have applied; create a new migration instead.
-- Review autogenerated migrations, especially `drop_table`, `drop_column`, and renames interpreted as a drop plus a create.
-- Do not delete Docker volumes with `docker compose down -v` to resolve errors without coordinating with the team.
-- Do not modify the schema manually through pgAdmin.
-- If multiple Alembic `heads` appear, coordinate their integration before continuing.
+## Definició de completat
 
-After changing a model:
+Una tasca es considera completada quan:
 
-```bash
-docker compose run --rm --build backend alembic revision --autogenerate -m "Describe the change"
-docker compose up --build --wait
-docker compose exec backend alembic check
-```
+- El comportament modificat està cobert per tests.
+- La configuració de Compose és vàlida.
+- Els tests passen, si l'entorn està disponible.
+- `alembic check` no detecta canvis pendents, si s'han modificat models.
+- Les migracions han estat revisades manualment.
+- El diff no conté secrets, fitxers generats ni canvis aliens a la tasca.
 
-## Code and Framework Conventions
+Tanca cada tasca indicant què has modificat, com ho has verificat (ordres i resultats) i què queda pendent.
 
-- Use modern typing supported by the container runtime (`Python 3.13`), such as `str | None`.
-- Use SQLAlchemy 2.x syntax: `select(Model)`, `db.scalars(stmt).all()`, `db.scalar(stmt)`, and `db.get(Model, id)`. Do not use `db.query(Model)`.
-- Use the existing typed dependencies: `DbSession` for database access and `CurrentUser` for protected routes.
-- For read schemas, preserve Pydantic `ConfigDict(from_attributes=True)`; use `@computed_field` only when required by the contract.
-- Commit writes with `db.commit()` and handle expected errors such as `IntegrityError`.
-- Validate data through Pydantic schemas instead of duplicating validation rules in every route.
-- Add or update tests when observable behavior changes.
-- Do not invent dependencies or add security libraries without team approval.
-- The project currently uses `unittest`; do not assume that `pytest`, `black`, or `ruff` are available unless they are explicitly added.
-- Do not perform unrelated refactors or reformat entire files.
-
-## Definition of Done
-
-- New or changed behavior has a new or updated test.
-- `docker compose config --quiet` succeeds.
-- The `unittest` suite passes when Docker is available.
-- `alembic check` reports no pending schema changes when models were modified.
-- Any migration has been manually reviewed.
-- The diff contains no secrets, generated files, or unrelated changes.
-
-## Reporting Problems
-
-Include the command that was run, the directory from which it was run, and the relevant error. Remove credentials from logs and never share `.env`.
+En informar d'errors, inclou l'ordre executada, el directori de treball i l'error rellevant, sense exposar credencials.
