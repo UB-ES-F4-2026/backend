@@ -13,3 +13,15 @@ class BalanceRead(BaseModel):
         ),
     )
     currency: Literal["eur"] = "eur"
+
+
+class DepositIntentCreate(BaseModel):
+    amount_cents: int = Field(
+        ge=50,
+        description="Importe a ingresar en céntimos de euro, mínimo 50.",
+    )
+
+
+class DepositIntentResponse(BaseModel):
+    client_secret: str
+    payment_intent_id: str

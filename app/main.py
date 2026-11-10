@@ -8,6 +8,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.api.routes import auth, opportunities, promoting_entity, wallet
 from app.database import engine
 
+from app.api.routes.wallet import router as wallet_router
+from app.api.routes.webhooks import router as webhooks_router
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -19,7 +22,8 @@ app = FastAPI(title="Fintech API", version="0.1.0", lifespan=lifespan)
 app.include_router(auth.router)
 app.include_router(opportunities.router)
 app.include_router(promoting_entity.router)
-app.include_router(wallet.router)
+app.include_router(wallet_router)
+app.include_router(webhooks_router)
 
 
 @app.get("/api/health", tags=["health"])

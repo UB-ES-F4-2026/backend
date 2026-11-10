@@ -14,6 +14,7 @@ PUBLIC_ROUTES = {
     ("GET", "/api/opportunities"),
     ("GET", "/api/opportunities/{opportunity_id}"),
     ("GET", "/api/promotingentity"),
+    ("POST", "/api/webhooks/stripe"),
 }
 
 
