@@ -9,7 +9,7 @@ Implementes canvis a l'API: rutes, esquemes, models, migracions i tests. Treball
 3. **Implementa** seguint les convencions. Un canvi d'esquema de dades porta model i migració al mateix commit.
 4. **Escriu o amplia tests** a `tests/` per a cada criteri i per a cada codi d'error nou.
 5. **Valida** amb les ordres de la secció final. Fins que no passa tot, la tasca no està feta.
-6. **Entrega**: PR cap a `main` amb `Closes #n`, resum del contracte de l'API (rutes, camps, codis d'estat) perquè el frontend el pugui consumir, i les decisions preses sobre criteris ambigus.
+6. **Entrega**: PR cap a la branca `feat/US…` de la història d'usuari (les `feat` es fusionen a `dev`, i `dev` a `main` a cada release) amb `Closes #n`, resum del contracte de l'API (rutes, camps, codis d'estat) perquè el frontend el pugui consumir, i les decisions preses sobre criteris ambigus.
 
 ## Mapa del codi
 
@@ -22,7 +22,7 @@ Implementes canvis a l'API: rutes, esquemes, models, migracions i tests. Treball
 | Models SQLAlchemy, un fitxer per taula, registrats automàticament | `app/models/` |
 | Hash de contrasenyes i tokens de sessió | `app/core/security.py` |
 | Motor, `Base`, `get_db` | `app/database.py` |
-| Migracions `000N_descripcio.py` | `alembic/versions/` |
+| Migracions `<hash>_descripcio.py` | `alembic/versions/` |
 | Tests `unittest`, un fitxer per recurs | `tests/` |
 
 ## Convencions
@@ -49,9 +49,9 @@ Implementes canvis a l'API: rutes, esquemes, models, migracions i tests. Treball
 
 ### Migracions
 
-- Genera-la amb la BD en marxa: `docker compose run --rm --build backend alembic revision --autogenerate -m "Descripcio"`. Reanomena el fitxer a `000N_descripcio.py` i posa `revision = "000N"`, `down_revision = "000(N-1)"`, seguint la numeració existent.
+- Genera-la amb la BD en marxa: `docker compose run --rm --build backend alembic revision --autogenerate -m "Descripcio"`. Conserva l'identificador hash que genera Alembic, tant al nom del fitxer com a `revision`: no el reanomenis a una numeració seqüencial, perquè dues branques en paral·lel triarien el mateix número. `down_revision` és el `head` de la branca de què parteixes (`alembic heads`).
 - Revisa el resultat: l'autogeneració pot convertir un canvi de nom en drop + create. Columnes `NOT NULL` sobre taules existents porten `server_default`. Les enumeracions de PostgreSQL es creen i s'esborren explícitament (model: `0006_add_opportunity_status.py`). `downgrade()` desfà exactament `upgrade()`.
-- Un sol `head`. Una migració ja fusionada a `main` és immutable: els canvis van en una de nova. L'esquema el creen només les migracions, mai `Base.metadata.create_all()`.
+- Un sol `head`. Quan en integrar dues branques amb migracions n'apareixen dos, resol-ho amb una única migració de merge (`alembic merge heads -m "Descripcio"`), sense tocar les migracions existents. Una migració ja fusionada a `dev` és immutable: els canvis van en una de nova. L'esquema el creen només les migracions, mai `Base.metadata.create_all()`.
 - Una variable d'entorn nova s'afegeix alhora a `compose.yaml`, `compose.ci.yaml`, `compose.production.yaml` i `production.env.example`; avisa DevOps al PR.
 
 ### Tests

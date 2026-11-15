@@ -46,7 +46,7 @@ Si la petició no especifica un rol, dedueix-lo i comunica quin apliques. Els ro
 4. Treballa en una branca `task/<n>-<descripció>` per issue.
 5. Mantén els canvis petits i coherents amb l'arquitectura existent.
 6. Afegeix o actualitza tests quan canviï el comportament observable.
-7. Obre una PR cap a `main`, enllaçant la issue amb `Closes #n`.
+7. Obre una PR cap a la branca `feat/US…` de la història d'usuari, enllaçant la issue amb `Closes #n`. Les `feat` es fusionen a `dev`, i `dev` a `main` a cada release.
 8. Comprova que la CI passa abans de fusionar.
 
 Les issues es consulten amb:
@@ -94,7 +94,8 @@ L'autenticació utilitza tokens aleatoris, emmagatzemats com a hashes SHA-256 a 
 - No utilitzis `Base.metadata.create_all()` ni `alembic init`.
 - No modifiquis migracions que altres desenvolupadors puguin haver aplicat.
 - Revisa manualment les migracions autogenerades, especialment eliminacions i canvis de nom.
-- Si apareixen diversos Alembic `heads`, coordina'n la integració.
+- Conserva l'identificador hash que genera Alembic; no reanomenis les migracions a una numeració seqüencial.
+- Si apareixen diversos Alembic `heads`, resol-los amb una única migració de merge (`alembic merge heads`).
 - No modifiquis l'esquema manualment amb pgAdmin.
 
 Després de modificar models:
