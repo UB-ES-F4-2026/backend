@@ -77,7 +77,7 @@ class WalletBalanceTest(unittest.TestCase):
         response = self.client.get("/api/me/wallet", headers={"Cookie": self.cookie})
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"available_cents": 0, "currency": "eur"})
+        self.assertEqual(response.json(), {"available_cents": 0, "committed_cents": 0, "currency": "eur"})
         self.assertEqual(response.headers["cache-control"], "no-store")
         with self.Session() as db:
             self.assertEqual(
@@ -99,7 +99,10 @@ class WalletBalanceTest(unittest.TestCase):
         self.assertEqual(second.status_code, 200)
         self.assertEqual(first.headers["cache-control"], "no-store")
         self.assertEqual(second.headers["cache-control"], "no-store")
-        self.assertEqual(first.json(), {"available_cents": 12345, "currency": "eur"})
+        self.assertEqual(
+            first.json(),
+            {"available_cents": 12345, "committed_cents": 0, "currency": "eur"},
+        )
         self.assertEqual(second.json(), first.json())
 
         with self.Session() as db:
@@ -115,6 +118,29 @@ class WalletBalanceTest(unittest.TestCase):
         with self.Session() as db:
             wallet = db.scalar(select(Wallet).where(Wallet.user_id == self.user_id))
             wallet.available_cents = -1
+            with self.assertRaises(IntegrityError):
+                db.commit()
+            db.rollback()
+
+    def test_committed_balance_is_reported_apart_from_available_balance(self):
+        with self.Session() as db:
+            wallet = db.scalar(select(Wallet).where(Wallet.user_id == self.user_id))
+            wallet.available_cents = 15000
+            wallet.committed_cents = 10000
+            db.commit()
+
+        response = self.client.get("/api/me/wallet", headers={"Cookie": self.cookie})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {"available_cents": 15000, "committed_cents": 10000, "currency": "eur"},
+        )
+
+    def test_database_rejects_negative_committed_balance(self):
+        with self.Session() as db:
+            wallet = db.scalar(select(Wallet).where(Wallet.user_id == self.user_id))
+            wallet.committed_cents = -1
             with self.assertRaises(IntegrityError):
                 db.commit()
             db.rollback()
