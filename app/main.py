@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.api.routes import auth, opportunities, promoting_entity, wallet
+from app.api.routes import auth, opportunities, promoting_entity, wallet, webhooks
 from app.database import engine
 
 
@@ -20,6 +20,7 @@ app.include_router(auth.router)
 app.include_router(opportunities.router)
 app.include_router(promoting_entity.router)
 app.include_router(wallet.router)
+app.include_router(webhooks.router)
 
 
 @app.get("/api/health", tags=["health"])
