@@ -25,7 +25,10 @@ services:
   backend:
     build:
       context: .
-    environment: *database-environment
+    environment:
+      <<: *database-environment
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
     depends_on:
       db:
         condition: service_healthy
