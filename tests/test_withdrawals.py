@@ -132,6 +132,25 @@ class WithdrawalTest(unittest.TestCase):
             wallet = db.scalar(select(Wallet).where(Wallet.user_id == self.user_id))
             self.assertEqual(wallet.available_cents, 12345)
 
+    def test_rejects_unknown_iban_country_and_invalid_country_length(self):
+        invalid_ibans = (
+            "ZZ66000000000000000000",
+            "ES8200000000000000000",
+        )
+
+        for iban in invalid_ibans:
+            with self.subTest(iban=iban):
+                response = self.client.post(
+                    "/api/me/wallet/withdrawals",
+                    headers=self.headers,
+                    json=self.withdrawal_payload(iban=iban),
+                )
+                self.assertEqual(response.status_code, 422)
+
+        with self.Session() as db:
+            wallet = db.scalar(select(Wallet).where(Wallet.user_id == self.user_id))
+            self.assertEqual(wallet.available_cents, 12345)
+
     def test_rejects_insufficient_balance_without_changing_the_wallet(self):
         response = self.client.post(
             "/api/me/wallet/withdrawals",
@@ -144,6 +163,19 @@ class WithdrawalTest(unittest.TestCase):
         with self.Session() as db:
             wallet = db.scalar(select(Wallet).where(Wallet.user_id == self.user_id))
             self.assertEqual(wallet.available_cents, 12345)
+
+    def test_withdrawal_can_use_the_exact_available_balance(self):
+        response = self.client.post(
+            "/api/me/wallet/withdrawals",
+            headers=self.headers,
+            json=self.withdrawal_payload(amount_cents=12345),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["available_cents"], 0)
+        with self.Session() as db:
+            wallet = db.scalar(select(Wallet).where(Wallet.user_id == self.user_id))
+            self.assertEqual(wallet.available_cents, 0)
 
     def test_withdrawal_only_changes_the_authenticated_users_wallet(self):
         with self.Session() as db:
