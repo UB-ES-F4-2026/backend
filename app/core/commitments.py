@@ -5,12 +5,14 @@ oportunitat amb aportació inicial, fan servir `reserve_funds`. Cap funció
 d'aquest mòdul fa `commit()`: la transacció és de qui les crida, que també
 tradueix les excepcions a la resposta HTTP que li correspongui.
 """
+from datetime import datetime
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.wallet import lock_wallet
 from app.models.commitment import Commitment
-from app.models.opportunity import Opportunity
+from app.models.opportunity import Opportunity, OpportunityStatus
 
 
 class CommitmentError(Exception):
@@ -35,6 +37,44 @@ class InsufficientFunds(CommitmentError):
         super().__init__("Insufficient available balance")
         self.amount_cents = amount_cents
         self.available_cents = available_cents
+
+
+class OpportunityNotFundable(CommitmentError):
+    def __init__(self, opportunity_id: int) -> None:
+        super().__init__(f"Opportunity {opportunity_id} is not in funding")
+        self.opportunity_id = opportunity_id
+
+
+class BelowMinimumContribution(CommitmentError):
+    def __init__(self, amount_cents: int, minimum_cents: int) -> None:
+        super().__init__("Amount below the minimum contribution")
+        self.amount_cents = amount_cents
+        self.minimum_cents = minimum_cents
+
+
+def ensure_in_funding(opportunity: Opportunity, now: datetime) -> None:
+    """Comprova que l'oportunitat admet aportacions dels usuaris en aquest moment.
+
+    Està en finançament si és publicada, no s'ha tancat, no ha vençut i encara
+    no ha assolit l'objectiu: les mateixes condicions que el catàleg disponible
+    (`available_opportunity_filter`). Cal cridar-la sobre l'oportunitat que
+    retorna `lock_opportunity`.
+    """
+    in_funding = (
+        opportunity.status == OpportunityStatus.PUBLISHED
+        and opportunity.date_closed is None
+        and opportunity.deadline > now
+        and opportunity.committed_cents < opportunity.target_amount_cents
+    )
+    if not in_funding:
+        raise OpportunityNotFundable(opportunity.id)
+
+
+def ensure_minimum_contribution(opportunity: Opportunity, amount_cents: int) -> None:
+    """Comprova l'aportació mínima; les oportunitats que no en tenen admeten qualsevol import."""
+    minimum_cents = opportunity.minimum_contribution_cents
+    if minimum_cents is not None and amount_cents < minimum_cents:
+        raise BelowMinimumContribution(amount_cents, minimum_cents)
 
 
 def lock_opportunity(db: Session, opportunity_id: int) -> Opportunity:
