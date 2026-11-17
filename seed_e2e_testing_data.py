@@ -141,6 +141,19 @@ real_estate_details = {
     },
 }
 
+business_details = {
+    "Ronda Seed - EcoLogistics SL": {
+        "sector": "cleantech",
+        "phase": "seed",
+        "pre_investment_valuation_cents": 360000000,
+    },
+    "Ampliación de Capital - HealthAI Solutions": {
+        "sector": "healthtech",
+        "phase": "growth",
+        "pre_investment_valuation_cents": 340000000,
+    },
+}
+
 INSERT_REAL_ESTATE_SQL = """
     INSERT INTO public.real_estate_opportunities (
         opportunity_id, purpose, intended_use, asset_type, surface_m2,
@@ -160,6 +173,20 @@ INSERT_REAL_ESTATE_SQL = """
         %(public_longitude)s::numeric
     FROM public.opportunities o
     WHERE o.title = %(title)s AND o.type = 'real_estate'
+    ON CONFLICT (opportunity_id) DO NOTHING
+"""
+
+INSERT_BUSINESS_SQL = """
+    INSERT INTO public.business_opportunities (
+        opportunity_id, sector, phase, pre_investment_valuation_cents
+    )
+    SELECT
+        o.id,
+        %(sector)s::business_sector,
+        %(phase)s::business_phase,
+        %(pre_investment_valuation_cents)s::integer
+    FROM public.opportunities o
+    WHERE o.title = %(title)s AND o.type = 'equity'
     ON CONFLICT (opportunity_id) DO NOTHING
 """
 
@@ -215,6 +242,36 @@ def inject_real_estate_details():
                     print(f"✅ Datos inmobiliarios insertados: {title}")
                 else:
                     print(f"ℹ️ Sin cambios (ya existían o no se encontró la oportunidad): {title}")
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+def inject_business_details():
+    """Inserta por SQL els detalls empresarials de les oportunitats ja creades."""
+    env = load_env()
+    missing = [k for k in ("POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_PORT") if k not in env]
+    if missing:
+        raise RuntimeError(f"Faltan variables en el .env: {', '.join(missing)}")
+
+    connection = pg.connect(
+        host="127.0.0.1",
+        port=int(env["POSTGRES_PORT"]),
+        dbname=env["POSTGRES_DB"],
+        user=env["POSTGRES_USER"],
+        password=env["POSTGRES_PASSWORD"],
+    )
+    try:
+        with connection.cursor() as cursor:
+            for title, details in business_details.items():
+                cursor.execute(INSERT_BUSINESS_SQL, {"title": title, **details})
+                if cursor.rowcount:
+                    print(f"✅ Dades empresarials inserides: {title}")
+                else:
+                    print(f"ℹ️ Sense canvis (ja existien o no s'ha trobat l'oportunitat): {title}")
         connection.commit()
     except Exception:
         connection.rollback()
@@ -294,6 +351,7 @@ def seed_database(backend_url: str = "http://localhost:8000"):
                 print(f"⚠️ Error de conexión en la petición {index}: {exc}")
 
     inject_real_estate_details()
+    inject_business_details()
         
         
 

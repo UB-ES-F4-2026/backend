@@ -5,6 +5,7 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.opportunity import OpportunityStatus, OpportunityType
+from app.models.business_opportunity import BusinessPhase, BusinessSector
 from app.models.real_estate_opportunity import AssetType, IntendedUse, RealEstatePurpose
 from app.schemas.promoting_entity import PromotingEntityRead
 
@@ -54,7 +55,7 @@ class RealEstateOpportunityRead(BaseModel):
     public_longitude: Decimal | None
 
 
-class OpportunityDetailRead(BaseModel):
+class RealEstateOpportunityDetailRead(BaseModel):
     """Detalle público de una oportunidad inmobiliaria (US02.2.1).
 
     Solo incluye los datos que muestra el detalle: no expone fechas internas
@@ -76,4 +77,33 @@ class OpportunityDetailRead(BaseModel):
     promoter: PromotingEntityRead
     real_estate: RealEstateOpportunityRead
     # Referencia temporal para que el frontend no dependa del reloj local.
+    server_time: datetime
+
+
+class BusinessOpportunityRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    sector: BusinessSector
+    phase: BusinessPhase
+    pre_investment_valuation_cents: int
+    equity_offered: Decimal
+
+
+class BusinessOpportunityDetailRead(BaseModel):
+    """Detall d'una oportunitat empresarial accessible amb sessió vàlida."""
+
+    id: int
+    type: OpportunityType
+    status: OpportunityStatus
+    title: str
+    description: str
+    location: str
+    cover_image_url: str | None
+    target_amount_cents: int
+    committed_cents: int
+    minimum_contribution_cents: int | None
+    date_published: datetime
+    deadline: datetime
+    promoter: PromotingEntityRead
+    business: BusinessOpportunityRead
     server_time: datetime
