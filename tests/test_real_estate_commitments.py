@@ -279,6 +279,44 @@ class CommitContributionRejectionTest(RealEstateCommitmentsTestCase):
         self.assertEqual(response.json()["detail"], BELOW_MINIMUM)
         self.assert_nothing_changed(user_id, opportunity_id, 250_00, 45_000_00)
 
+    def test_remaining_capital_below_the_minimum_only_accepts_the_exact_remainder(self):
+        # Falten 30,00 € i el mínim és de 50,00 €: només val aportar-ne 30,00.
+        user_id, cookie = self.create_user(250_00)
+        opportunity_id = self.create_opportunity(
+            committed_cents=71_970_00, minimum_contribution_cents=50_00
+        )
+
+        below = self.commit(opportunity_id, cookie, {"amount_cents": 29_99})
+        self.assertEqual(below.status_code, 422)
+        self.assertEqual(below.json()["detail"], BELOW_MINIMUM)
+        self.assert_nothing_changed(user_id, opportunity_id, 250_00, 71_970_00)
+
+        for amount_cents in (30_01, 50_00):
+            with self.subTest(amount_cents=amount_cents):
+                above = self.commit(opportunity_id, cookie, {"amount_cents": amount_cents})
+                self.assertEqual(above.status_code, 409)
+                self.assertEqual(above.json()["detail"], NOT_ACCEPTED)
+                self.assert_nothing_changed(user_id, opportunity_id, 250_00, 71_970_00)
+
+        exact = self.commit(opportunity_id, cookie, {"amount_cents": 30_00})
+        self.assertEqual(exact.status_code, 201)
+        self.assertEqual(exact.json()["opportunity"]["committed_cents"], 72_000_00)
+        self.assertEqual(self.balances(user_id), (220_00, 30_00))
+        catalog = self.client.get("/api/opportunities").json()
+        self.assertNotIn(opportunity_id, [item["id"] for item in catalog])
+
+    def test_remaining_capital_equal_to_the_minimum_keeps_the_minimum(self):
+        user_id, cookie = self.create_user(250_00)
+        opportunity_id = self.create_opportunity(
+            committed_cents=71_950_00, minimum_contribution_cents=50_00
+        )
+
+        below = self.commit(opportunity_id, cookie, {"amount_cents": 49_99})
+        exact = self.commit(opportunity_id, cookie, {"amount_cents": 50_00})
+
+        self.assertEqual((below.status_code, exact.status_code), (422, 201))
+        self.assertEqual(self.opportunity_committed(opportunity_id), 72_000_00)
+
     def test_amount_must_be_a_positive_whole_number_of_cents(self):
         user_id, cookie = self.create_user(250_00)
         opportunity_id = self.create_opportunity()

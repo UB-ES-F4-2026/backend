@@ -71,10 +71,19 @@ def ensure_in_funding(opportunity: Opportunity, now: datetime) -> None:
 
 
 def ensure_minimum_contribution(opportunity: Opportunity, amount_cents: int) -> None:
-    """Comprova l'aportació mínima; les oportunitats que no en tenen admeten qualsevol import."""
+    """Comprova l'aportació mínima; les oportunitats que no en tenen admeten qualsevol import.
+
+    Quan el capital pendent ja és inferior a l'aportació mínima, el mínim passa
+    a ser el pendent: l'única aportació possible és exactament la que completa
+    l'objectiu. Cal cridar-la sobre l'oportunitat que retorna `lock_opportunity`.
+    """
     minimum_cents = opportunity.minimum_contribution_cents
-    if minimum_cents is not None and amount_cents < minimum_cents:
-        raise BelowMinimumContribution(amount_cents, minimum_cents)
+    if minimum_cents is None:
+        return
+    remaining_cents = opportunity.target_amount_cents - opportunity.committed_cents
+    required_cents = min(minimum_cents, remaining_cents)
+    if amount_cents < required_cents:
+        raise BelowMinimumContribution(amount_cents, required_cents)
 
 
 def lock_opportunity(db: Session, opportunity_id: int) -> Opportunity:
