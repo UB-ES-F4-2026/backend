@@ -6,6 +6,8 @@ from phonenumbers import NumberParseException, PhoneNumberFormat
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from app.schemas.promoting_entity import PromotingEntityRegistration
+
 
 class RegisterRequest(BaseModel):
     email: EmailStr
@@ -13,6 +15,7 @@ class RegisterRequest(BaseModel):
     last_name: str | None = Field(default=None, max_length=100)
     phone: str = Field(min_length=1, max_length=20)
     password: str = Field(min_length=8, max_length=72)
+    promoting_entity: PromotingEntityRegistration | None = None
 
     @field_validator("email")
     @classmethod
@@ -61,3 +64,4 @@ class UserRead(BaseModel):
     last_name: str | None
     phone: str | None
     created_at: datetime
+    is_promoter: bool

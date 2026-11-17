@@ -132,6 +132,7 @@ class OpportunityDetailTest(unittest.TestCase):
             "image_url": "https://example.com/logo.png",
             "published_projects_count": body["promoter"]["published_projects_count"],
             "experience_years": 0,
+            "founding_year": None,
             "location": "Girona, Girona, España",
         })
         self.assertGreaterEqual(body["promoter"]["published_projects_count"], 1)
