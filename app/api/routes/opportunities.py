@@ -8,7 +8,9 @@ from sqlalchemy.orm import contains_eager
 
 from app.api.deps import CurrentUser, DbSession
 from app.api.routes.promoting_entity import published_projects_count, to_read
+from app.core.commitments import CommitmentError, InsufficientFunds
 from app.core.name_search import search_by_title
+from app.core.opportunity_creation import create_pending_opportunity
 from app.models.opportunity import Opportunity, OpportunityStatus, OpportunityType
 from app.models.promoting_entity import PromotingEntity
 from app.schemas.opportunity import (
@@ -30,22 +32,25 @@ def create_opportunity(
     if db.get(PromotingEntity, current_user.id) is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Debes crear una entidad promotora antes de crear oportunidades",
+            detail="A promoting entity is required to create opportunities",
         )
-    opportunity = Opportunity(
-        user_id=current_user.id,
-        type=body.type,
-        title=body.title,
-        description=body.description,
-        location=body.location,
-        cover_image_url=body.cover_image_url,
-        target_amount_cents=body.target_amount_cents,
-        committed_cents=body.committed_cents,
-        deadline=body.deadline,
-        date_published=datetime.now(UTC),
-    )
-    db.add(opportunity)
-    db.commit()
+    try:
+        opportunity = create_pending_opportunity(
+            db, user_id=current_user.id, body=body
+        )
+        db.commit()
+    except InsufficientFunds:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Insufficient available balance",
+        ) from None
+    except CommitmentError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Initial contribution could not be reserved",
+        ) from None
     db.refresh(opportunity)
     return opportunity
 
