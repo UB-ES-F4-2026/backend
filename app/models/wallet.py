@@ -15,6 +15,7 @@ class Wallet(Base):
     __tablename__ = "wallets"
     __table_args__ = (
         CheckConstraint("available_cents >= 0", name="available_cents_non_negative"),
+        CheckConstraint("committed_cents >= 0", name="committed_cents_non_negative"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -24,7 +25,11 @@ class Wallet(Base):
     available_cents: Mapped[int] = mapped_column(
         BigInteger, default=0, server_default="0", nullable=False
     )
-   
+    # Saldo reservat en compromisos: no és disponible ni es pot retirar.
+    committed_cents: Mapped[int] = mapped_column(
+        BigInteger, default=0, server_default="0", nullable=False
+    )
+
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
