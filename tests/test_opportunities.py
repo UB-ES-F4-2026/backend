@@ -6,15 +6,17 @@ from uuid import uuid4
 from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.orm import sessionmaker
 
 from app.api.deps import get_current_user
 from app.database import engine, get_db
 from app.main import app
+from app.models.commitment import Commitment
 from app.models.opportunity import Opportunity, OpportunityStatus
 from app.models.promoting_entity import PromotingEntity
 from app.models.user import User
+from app.models.wallet import Wallet
 
 
 class OpportunitiesTest(unittest.TestCase):
@@ -64,14 +66,26 @@ class OpportunitiesTest(unittest.TestCase):
             "type": "real_estate",
             "title": "Investment opportunity",
             "description": "A test opportunity",
-            "location": "Barcelona",
-            "cover_image_url": None,
+            "location": {
+                "municipality": "Barcelona",
+                "province": "Barcelona",
+                "country": "Spain",
+            },
             "target_amount_cents": 25000000,
-            "committed_cents": 10000,
+            "minimum_contribution_cents": 5000,
             "deadline": (datetime.now(UTC) + timedelta(days=30)).isoformat(),
         }
         body.update(changes)
         return body
+
+    def set_wallet_balance(self, available_cents: int) -> None:
+        wallet = self.session.scalar(select(Wallet).where(Wallet.user_id == self.user.id))
+        if wallet is None:
+            self.session.add(Wallet(user_id=self.user.id, available_cents=available_cents))
+        else:
+            wallet.available_cents = available_cents
+            wallet.committed_cents = 0
+        self.session.commit()
 
     def test_create_opportunity_requires_authentication(self):
         app.dependency_overrides.pop(get_current_user)
@@ -91,10 +105,17 @@ class OpportunitiesTest(unittest.TestCase):
         self.assertEqual(response.status_code, 201)
         body = response.json()
         self.assertEqual(body["user_id"], self.user.id)
-        self.assertEqual(body["committed_cents"], 10000)
+        self.assertEqual(body["committed_cents"], 0)
         self.assertEqual(body["type"], "real_estate")
-        self.assertIsNotNone(body["date_published"])
+        self.assertIsNone(body["date_published"])
         self.assertNotIn("status", body)
+        self.session.expire_all()
+        opportunity = self.session.get(Opportunity, body["id"])
+        self.assertEqual(opportunity.status, OpportunityStatus.DRAFT)
+        self.assertEqual(opportunity.location, "Barcelona, Barcelona, Spain")
+        self.assertEqual(opportunity.minimum_contribution_cents, 5000)
+        catalog = self.client.get("/api/opportunities")
+        self.assertNotIn(body["id"], [item["id"] for item in catalog.json()])
 
     def test_create_opportunity_requires_promoting_entity(self):
         user = User(email="no-promoter@example.com", hashed_password="x" * 60)
@@ -109,15 +130,71 @@ class OpportunitiesTest(unittest.TestCase):
         self.assertEqual(response.status_code, 403)
 
     def test_create_opportunity_rejects_invalid_data(self):
+        invalid_bodies = (
+            self.opportunity_body(type="invalid"),
+            self.opportunity_body(target_amount_cents=0),
+            self.opportunity_body(minimum_contribution_cents=0),
+            self.opportunity_body(minimum_contribution_cents=25000001),
+            self.opportunity_body(initial_contribution_cents=4999),
+            self.opportunity_body(initial_contribution_cents=25000001),
+            self.opportunity_body(target_amount_cents=5000.0),
+            self.opportunity_body(title=" "),
+            self.opportunity_body(description=" "),
+            self.opportunity_body(location={"municipality": " ", "province": "A", "country": "B"}),
+            self.opportunity_body(location={"municipality": "A", "province": " ", "country": "B"}),
+            self.opportunity_body(location={"municipality": "A", "province": "B", "country": " "}),
+            self.opportunity_body(deadline=(datetime.now(UTC) - timedelta(seconds=1)).isoformat()),
+        )
+
+        for body in invalid_bodies:
+            with self.subTest(body=body):
+                response = self.client.post("/api/opportunities", json=body)
+                self.assertEqual(response.status_code, 422)
+
+    def test_initial_contribution_reserves_funds_with_the_new_opportunity(self):
+        self.set_wallet_balance(10000)
+
+        response = self.client.post(
+            "/api/opportunities",
+            json=self.opportunity_body(initial_contribution_cents=7500),
+        )
+
+        self.assertEqual(response.status_code, 201)
+        opportunity_id = response.json()["id"]
+        self.session.expire_all()
+        wallet = self.session.scalar(select(Wallet).where(Wallet.user_id == self.user.id))
+        opportunity = self.session.get(Opportunity, opportunity_id)
+        commitment = self.session.scalar(
+            select(Commitment).where(Commitment.opportunity_id == opportunity_id)
+        )
+        self.assertEqual((wallet.available_cents, wallet.committed_cents), (2500, 7500))
+        self.assertEqual(opportunity.committed_cents, 7500)
+        self.assertEqual(opportunity.status, OpportunityStatus.DRAFT)
+        self.assertEqual(commitment.amount_cents, 7500)
+
+    def test_insufficient_initial_contribution_does_not_create_partial_data(self):
+        self.set_wallet_balance(5000)
+        commitments_before = self.session.scalar(select(func.count()).select_from(Commitment))
+
         response = self.client.post(
             "/api/opportunities",
             json=self.opportunity_body(
-                type="invalid",
-                target_amount_cents=0,
+                title="Rollback opportunity", initial_contribution_cents=7500
             ),
         )
 
-        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.status_code, 409)
+        self.session.expire_all()
+        wallet = self.session.scalar(select(Wallet).where(Wallet.user_id == self.user.id))
+        opportunity = self.session.scalar(
+            select(Opportunity).where(Opportunity.title == "Rollback opportunity")
+        )
+        self.assertEqual((wallet.available_cents, wallet.committed_cents), (5000, 0))
+        self.assertIsNone(opportunity)
+        self.assertEqual(
+            self.session.scalar(select(func.count()).select_from(Commitment)),
+            commitments_before,
+        )
 
     def test_get_opportunity_hides_non_real_estate_opportunities(self):
         # US02.2.1: el detalle solo muestra oportunidades inmobiliarias.
