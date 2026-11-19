@@ -8,8 +8,9 @@ Implementes canvis a l'API: rutes, esquemes, models, migracions i tests. Treball
 2. **Localitza el codi afectat** amb el mapa de sota i llegeix els mòduls que tocaràs i els tests que els cobreixen.
 3. **Implementa** seguint les convencions. Un canvi d'esquema de dades porta model i migració al mateix commit.
 4. **Escriu o amplia tests** a `tests/` per a cada criteri i per a cada codi d'error nou.
-5. **Valida** amb les ordres de la secció final. Fins que no passa tot, la tasca no està feta.
-6. **Entrega**: PR cap a la branca `feat/US…` de la història d'usuari (les `feat` es fusionen a `dev`, i `dev` a `main` a cada release) amb `Closes #n`, resum del contracte de l'API (rutes, camps, codis d'estat) perquè el frontend el pugui consumir, i les decisions preses sobre criteris ambigus.
+5. **Actualitza el seed E2E** segons [Seed E2E](#seed-e2e). Està fet quan, amb el codi de la branca i sobre una BD buida, `seed_e2e_testing_data.py` acaba sense cap ❌ i deixa totes les dades que els fluxos de `../frontend/e2e/` necessiten. Si el canvi no afecta cap dada del seed, digues-ho al PR amb el motiu.
+6. **Valida** amb les ordres de la secció final. Fins que no passa tot, la tasca no està feta.
+7. **Entrega**: PR cap a la branca `feat/US…` de la història d'usuari (les `feat` es fusionen a `dev`, i `dev` a `main` a cada release) amb `Closes #n`, resum del contracte de l'API (rutes, camps, codis d'estat) perquè el frontend el pugui consumir, els canvis al seed i les decisions preses sobre criteris ambigus.
 
 ## Mapa del codi
 
@@ -23,6 +24,8 @@ Implementes canvis a l'API: rutes, esquemes, models, migracions i tests. Treball
 | Hash de contrasenyes i tokens de sessió | `app/core/security.py` |
 | Motor, `Base`, `get_db` | `app/database.py` |
 | Migracions `<hash>_descripcio.py` | `alembic/versions/` |
+| Seed de dades per als E2E i el desenvolupament local | `seed_e2e_testing_data.py` |
+| Workflow E2E (Playwright del frontend `dev` contra aquest backend) | `.github/workflows/e2e-playwright.yml` |
 | Tests `unittest`, un fitxer per recurs | `tests/` |
 
 ## Convencions
@@ -60,6 +63,25 @@ Implementes canvis a l'API: rutes, esquemes, models, migracions i tests. Treball
 - `TestClient(app, base_url="https://testserver")` quan la prova depèn de la cookie de sessió, que és `Secure`.
 - Cobreix el camí correcte, cada codi d'error i les regles de negoci (límits, estats, propietat). `test_route_protection.py` falla sol si una ruta nova queda sense protegir.
 
+### Seed E2E
+
+`seed_e2e_testing_data.py` omple una BD acabada de migrar amb les dades de què depenen els E2E de Playwright (`../frontend/e2e/`) i el desenvolupament local. El workflow E2E l'executa en les PR cap a `dev` dels dos repositoris (el del frontend agafa el backend de `dev`): un seed desfasat fa caure els E2E de tots dos encara que els tests unitaris passin. El seed és part del canvi i va al mateix PR.
+
+Actualitza'l quan el canvi:
+
+- afegeix un camp obligatori a un `*Create`, o una columna o taula que el frontend mostra;
+- canvia quines dades són visibles o vàlides: estats, filtres del catàleg, dates límit, precondicions (com l'entitat promotora per crear oportunitats);
+- obre una funcionalitat que els E2E recorren i que necessita dades prèvies (saldo, compromisos, detall d'un tipus d'oportunitat);
+- reanomena o elimina camps, taules o valors d'enumeració que el seed envia o insereix.
+
+Regles:
+
+- Crea les dades per l'API quan hi ha endpoint, perquè passin per les mateixes validacions. SQL directe només per a dades sense endpoint, enllaçades per una clau natural i amb `ON CONFLICT DO NOTHING`.
+- Cada camp del payload existeix al `*Create` de l'endpoint: Pydantic descarta en silenci els camps desconeguts i la dada no arriba a la BD.
+- Dates relatives al moment d'execució (`datetime.now(UTC) + timedelta(...)`): una data fixa caduca i l'oportunitat surt del catàleg.
+- Una dada que no es pot crear atura l'script amb error (`raise_for_status()` o excepció), perquè el CI falli al seed i no més tard a Playwright.
+- Els fluxos de `../frontend/e2e/` busquen oportunitats per títol i compten els resultats del catàleg: llegeix-los abans d'afegir, treure o reanomenar dades. Si les seves expectatives han de canviar, obre una issue a `UB-ES-F4-2026/frontend` i enllaça-la al PR.
+
 ## Validació
 
 Des de `backend`, amb Docker en marxa:
@@ -72,3 +94,14 @@ docker compose exec backend python -m unittest discover -s tests -v
 ```
 
 Fet vol dir: tot verd, `alembic check` sense diferències i cada criteri de la issue amb el seu test o comprovació. Per no tocar l'entorn local, usa l'equivalent amb `-f compose.ci.yaml` de [CI.md](../CI.md).
+
+Seed i E2E. `compose.ci.yaml` no publica ports, així que el seed corre contra `compose.yaml` i necessita `httpx` i `psycopg` (o `psycopg2`) al Python del host:
+
+```bash
+python seed_e2e_testing_data.py
+# des de ../frontend
+npm ci && npx playwright install chromium
+PLAYWRIGHT_BASE_URL=http://127.0.0.1:<FRONTEND_PORT> npx playwright test --workers=1
+```
+
+El seed suposa una BD sense les seves dades: si l'usuari `inyector@fintech.com` ja existeix a la BD local, tornar-lo a executar duplica les oportunitats i trenca els recomptes dels E2E. En aquest cas, demana a l'usuari abans d'executar-lo. Les PR de tasca cap a `feat/US…` no disparen el workflow E2E, així que la prova local és l'única abans de la PR de `feat` a `dev`; en aquesta, el comentari `Resultados E2E de Playwright` ha d'estar tot verd.
