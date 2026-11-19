@@ -143,12 +143,12 @@ real_estate_details = {
 
 business_details = {
     "Ronda Seed - EcoLogistics SL": {
-        "sector": "cleantech",
+        "sector": "logistic",
         "phase": "seed",
         "pre_investment_valuation_cents": 360000000,
     },
     "Ampliación de Capital - HealthAI Solutions": {
-        "sector": "healthtech",
+        "sector": "health",
         "phase": "growth",
         "pre_investment_valuation_cents": 340000000,
     },

@@ -223,20 +223,115 @@ class BusinessOpportunityDetailTest(unittest.TestCase):
             sectors,
             [
                 "fintech",
+                "industry",
                 "saas",
-                "healthtech",
+                "health",
                 "biotech",
                 "cleantech",
                 "agritech",
                 "foodtech",
                 "d2c",
-                "edtech",
+                "education",
                 "media",
+                "tourism",
+                "logistic",
                 "ai",
                 "other",
             ],
         )
         self.assertEqual(phases, ["pre_seed", "seed", "early", "growth", "late"])
+
+    def test_sector_migration_preserves_and_maps_existing_values(self):
+        database = "business_sector_migration_" + uuid4().hex
+        with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+            connection.execute(text(f'CREATE DATABASE "{database}"'))
+        isolated = create_engine(engine.url.set(database=database))
+        config = Config("/app/alembic.ini")
+
+        def migrate(operation, revision):
+            with isolated.begin() as connection:
+                config.attributes["connection"] = connection
+                operation(config, revision)
+
+        try:
+            migrate(command.upgrade, "0f4afe25bff8")
+            with isolated.begin() as connection:
+                user_id = connection.scalar(
+                    text(
+                        "INSERT INTO users (email, hashed_password) "
+                        "VALUES ('sector-migration@example.com', :password) "
+                        "RETURNING id"
+                    ),
+                    {"password": "x" * 60},
+                )
+                connection.execute(
+                    text(
+                        "INSERT INTO promoting_entities (user_id, legal_name) "
+                        "VALUES (:user_id, 'Migració SL')"
+                    ),
+                    {"user_id": user_id},
+                )
+                for index, sector in enumerate(("healthtech", "edtech", "fintech")):
+                    opportunity_id = connection.scalar(
+                        text(
+                            """
+                            INSERT INTO opportunities (
+                                user_id, type, status, title, description, location,
+                                target_amount_cents, deadline, date_published
+                            )
+                            VALUES (
+                                :user_id, 'equity', 'published', :title, 'Descripció',
+                                'Barcelona', 10000, now() + interval '1 day', now()
+                            )
+                            RETURNING id
+                            """
+                        ),
+                        {"user_id": user_id, "title": f"Empresa {index}"},
+                    )
+                    connection.execute(
+                        text(
+                            """
+                            INSERT INTO business_opportunities (
+                                opportunity_id, sector, phase,
+                                pre_investment_valuation_cents
+                            )
+                            VALUES (
+                                :opportunity_id, CAST(:sector AS business_sector),
+                                'seed', 20000
+                            )
+                            """
+                        ),
+                        {"opportunity_id": opportunity_id, "sector": sector},
+                    )
+
+            migrate(command.upgrade, "head")
+            with isolated.connect() as connection:
+                upgraded_sectors = connection.scalars(
+                    text(
+                        "SELECT sector::text FROM business_opportunities "
+                        "ORDER BY opportunity_id"
+                    )
+                ).all()
+            self.assertEqual(upgraded_sectors, ["health", "education", "fintech"])
+
+            migrate(command.downgrade, "0f4afe25bff8")
+            with isolated.connect() as connection:
+                downgraded_sectors = connection.scalars(
+                    text(
+                        "SELECT sector::text FROM business_opportunities "
+                        "ORDER BY opportunity_id"
+                    )
+                ).all()
+            self.assertEqual(
+                downgraded_sectors,
+                ["healthtech", "edtech", "fintech"],
+            )
+        finally:
+            isolated.dispose()
+            with engine.connect().execution_options(
+                isolation_level="AUTOCOMMIT"
+            ) as connection:
+                connection.execute(text(f'DROP DATABASE "{database}" WITH (FORCE)'))
 
 
 if __name__ == "__main__":

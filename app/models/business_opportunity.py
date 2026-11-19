@@ -13,15 +13,18 @@ if TYPE_CHECKING:
 
 class BusinessSector(str, Enum):
     FINTECH = "fintech"
+    INDUSTRY = "industry"
     SAAS = "saas"
-    HEALTHTECH = "healthtech"
+    HEALTH = "health"
     BIOTECH = "biotech"
     CLEANTECH = "cleantech"
     AGRITECH = "agritech"
     FOODTECH = "foodtech"
     D2C = "d2c"
-    EDTECH = "edtech"
+    EDUCATION = "education"
     MEDIA = "media"
+    TOURISM = "tourism"
+    LOGISTIC = "logistic"
     AI = "ai"
     OTHER = "other"
 
