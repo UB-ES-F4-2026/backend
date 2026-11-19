@@ -1,4 +1,5 @@
 import os
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -15,6 +16,16 @@ LOGIN_URL = "{API_BASE_URL}/api/auth/login"
 SEED_EMAIL = "inyector@fintech.com"
 SEED_PASSWORD = "inyector-fintech-2026"
 
+
+def deadline_in(days: int) -> str:
+    """Fecha límite relativa a la ejecución: una fecha fija caduca y la oportunidad sale del catálogo."""
+    return (datetime.now(UTC) + timedelta(days=days)).isoformat()
+
+
+def date_in(days: int) -> str:
+    return (datetime.now(UTC).date() + timedelta(days=days)).isoformat()
+
+
 # Datos con las modificaciones aplicadas (imágenes y localización)
 opportunities = [
     {
@@ -25,7 +36,7 @@ opportunities = [
         "cover_image_url": "https://becinadas.es/wp-content/uploads/2021/02/casa-ramos-plaza-lesseps-barcelona.jpg?w=750",
         "target_amount_cents": 150000000,
         "committed_cents": 2000000,
-        "deadline": "2026-12-15T23:59:59.000Z",
+        "deadline": deadline_in(30),
         "minimum_contribution_cents": 10000
     },
     {
@@ -36,7 +47,7 @@ opportunities = [
         "cover_image_url": "https://orozcoyasociados.es/wp-content/uploads/2026/08/gastos-comunidad-local-comercial-1024x683.jpg",
         "target_amount_cents": 85000000,
         "committed_cents": 1000000,
-        "deadline": "2026-11-30T18:00:00.000Z",
+        "deadline": deadline_in(15),
         "minimum_contribution_cents": 10000
     },
     {
@@ -47,7 +58,7 @@ opportunities = [
         "cover_image_url": "https://es.habcdn.com/photos/project/medium/conjunto-de-20-viviendas-unifamiliares-en-rosa-de-bara_192999.jpg",
         "target_amount_cents": 120000000,
         "committed_cents": 6000000,
-        "deadline": "2027-01-20T12:00:00.000Z",
+        "deadline": deadline_in(60),
         "minimum_contribution_cents": 10000
     },
     {
@@ -58,7 +69,7 @@ opportunities = [
         "cover_image_url": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQFwPGBb33NxFliAWiIGgrWyaivq6aKbKaOzPijc7r9teYKkKxk-IAnV9g&s=10",
         "target_amount_cents": 65000000,
         "committed_cents": 650000,
-        "deadline": "2026-11-15T23:59:59.000Z",
+        "deadline": deadline_in(20),
         "minimum_contribution_cents": 10000
     },
     {
@@ -69,7 +80,7 @@ opportunities = [
         "cover_image_url": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRFepW0C2QB0nE3bjm3XewQUkyTItkjP7mz2M5pSryj0pRpCZ5_syMOxdo&s=10",
         "target_amount_cents": 40000000,
         "committed_cents": 8000,
-        "deadline": "2026-12-10T14:00:00.000Z",
+        "deadline": deadline_in(45),
         "minimum_contribution_cents": 10000
     },
     {
@@ -80,7 +91,73 @@ opportunities = [
         "cover_image_url": "https://images.ctfassets.net/5z56gn2a2s8n/4zSVT4TZLVImyLvXvLu5HO/1844f0a714cb2606b43f0e99986cd937/AI-for-Healthcare---sized.jpg?fm=webp&q=75&w=1200",
         "target_amount_cents": 60000000,
         "committed_cents": 1000,
-        "deadline": "2027-02-28T23:59:59.000Z",
+        "deadline": deadline_in(90),
+        "minimum_contribution_cents": 10000
+    },
+    {
+        "type": "real_estate",
+        "title": "Rehabilitación de Espai Mixt en L'Hospitalet",
+        "description": "Rehabilitación de un edificio de uso mixto con espacios residenciales y comerciales. La propuesta incluye mejoras de accesibilidad y eficiencia energética.",
+        "location": "L'Hospitalet de Llobregat, Barcelona",
+        "cover_image_url": None,
+        "target_amount_cents": 92000000,
+        "committed_cents": 0,
+        "deadline": deadline_in(75),
+        "minimum_contribution_cents": 5000
+    },
+    {
+        "type": "real_estate",
+        "title": "Nave Industrial Sostenible en Zaragoza",
+        "description": "Construcción de una nave industrial preparada para alquiler logístico, con instalaciones fotovoltaicas y acceso directo a vías principales.",
+        "location": "La Cartuja Baja, Zaragoza",
+        "cover_image_url": None,
+        "target_amount_cents": 73500000,
+        "committed_cents": 12500000,
+        "deadline": deadline_in(105),
+        "minimum_contribution_cents": 25000
+    },
+    {
+        "type": "real_estate",
+        "title": "Urbanización de Parcela Urbana en Girona",
+        "description": "Proyecto de urbanización de una parcela para su posterior comercialización. La inversión contempla las obras previstas y los gastos de gestión.",
+        "location": "Girona, Catalunya",
+        "cover_image_url": None,
+        "target_amount_cents": 18000000,
+        "committed_cents": 4500000,
+        "deadline": deadline_in(35),
+        "minimum_contribution_cents": 10000
+    },
+    {
+        "type": "real_estate",
+        "title": "Locales Comerciales Rehabilitados en Bilbao",
+        "description": "Adquisición y rehabilitación de locales en planta baja para uso comercial. El plan incluye renovación de instalaciones y mejora de fachadas.",
+        "location": "Bilbao, Bizkaia",
+        "cover_image_url": None,
+        "target_amount_cents": 51000000,
+        "committed_cents": 50900000,
+        "deadline": deadline_in(12),
+        "minimum_contribution_cents": 50000
+    },
+    {
+        "type": "real_estate",
+        "title": "Residencial de Alquiler en Tarragona",
+        "description": "Adquisición de un edificio residencial para alquiler de larga duración. La planificación incluye la actualización de zonas comunes y servicios.",
+        "location": "Tarragona, Catalunya",
+        "cover_image_url": None,
+        "target_amount_cents": 44000000,
+        "committed_cents": 21000000,
+        "deadline": deadline_in(55),
+        "minimum_contribution_cents": 10000
+    },
+    {
+        "type": "real_estate",
+        "title": "Vivienda de Obra Nueva para Uso Propio",
+        "description": "Construcción de una vivienda unifamiliar con espacios adaptables y soluciones de bajo consumo energético.",
+        "location": "Pamplona, Navarra",
+        "cover_image_url": None,
+        "target_amount_cents": 26500000,
+        "committed_cents": 3250000,
+        "deadline": deadline_in(80),
         "minimum_contribution_cents": 10000
     }
 ]
@@ -101,8 +178,8 @@ real_estate_details = {
         "asset_type": "residential",
         "surface_m2": "780.00",
         "planned_housing_units": 8,
-        "estimated_works_end": "2027-06-30",
-        "estimated_rental_start": "2027-09-01",
+        "estimated_works_end": date_in(225),
+        "estimated_rental_start": date_in(285),
         "public_latitude": "41.391000",
         "public_longitude": "2.165000",
     },
@@ -123,7 +200,7 @@ real_estate_details = {
         "asset_type": "residential",
         "surface_m2": "1450.00",
         "planned_housing_units": 10,
-        "estimated_works_end": "2027-12-15",
+        "estimated_works_end": date_in(390),
         "estimated_rental_start": None,
         "public_latitude": "37.344000",
         "public_longitude": "-6.062000",
@@ -135,9 +212,75 @@ real_estate_details = {
         "surface_m2": "410.00",
         "planned_housing_units": 6,
         "estimated_works_end": None,
-        "estimated_rental_start": "2027-03-01",
+        "estimated_rental_start": date_in(100),
         "public_latitude": "38.643000",
         "public_longitude": "0.060000",
+    },
+    "Rehabilitación de Espai Mixt en L'Hospitalet": {
+        "purpose": "renovation",
+        "intended_use": "own_use",
+        "asset_type": "mixed",
+        "surface_m2": "620.00",
+        "planned_housing_units": 3,
+        "estimated_works_end": date_in(310),
+        "estimated_rental_start": None,
+        "public_latitude": None,
+        "public_longitude": None,
+    },
+    "Nave Industrial Sostenible en Zaragoza": {
+        "purpose": "construction",
+        "intended_use": "rental",
+        "asset_type": "industrial",
+        "surface_m2": "2850.00",
+        "planned_housing_units": None,
+        "estimated_works_end": date_in(420),
+        "estimated_rental_start": date_in(480),
+        "public_latitude": "41.635000",
+        "public_longitude": "-0.850000",
+    },
+    "Urbanización de Parcela Urbana en Girona": {
+        "purpose": "construction",
+        "intended_use": "sale",
+        "asset_type": "land",
+        "surface_m2": "345.75",
+        "planned_housing_units": None,
+        "estimated_works_end": date_in(190),
+        "estimated_rental_start": None,
+        "public_latitude": None,
+        "public_longitude": None,
+    },
+    "Locales Comerciales Rehabilitados en Bilbao": {
+        "purpose": "acquisition_and_renovation",
+        "intended_use": "own_use",
+        "asset_type": "commercial",
+        "surface_m2": "128.40",
+        "planned_housing_units": None,
+        "estimated_works_end": date_in(160),
+        "estimated_rental_start": None,
+        "public_latitude": "43.263000",
+        "public_longitude": "-2.935000",
+    },
+    "Residencial de Alquiler en Tarragona": {
+        "purpose": "acquisition",
+        "intended_use": "rental",
+        "asset_type": "mixed",
+        "surface_m2": "980.00",
+        "planned_housing_units": 14,
+        "estimated_works_end": None,
+        "estimated_rental_start": date_in(75),
+        "public_latitude": "41.118000",
+        "public_longitude": "1.245000",
+    },
+    "Vivienda de Obra Nueva para Uso Propio": {
+        "purpose": "construction",
+        "intended_use": "own_use",
+        "asset_type": "residential",
+        "surface_m2": "156.25",
+        "planned_housing_units": 1,
+        "estimated_works_end": date_in(350),
+        "estimated_rental_start": None,
+        "public_latitude": None,
+        "public_longitude": None,
     },
 }
 
@@ -161,6 +304,14 @@ INSERT_REAL_ESTATE_SQL = """
     FROM public.opportunities o
     WHERE o.title = %(title)s AND o.type = 'real_estate'
     ON CONFLICT (opportunity_id) DO NOTHING
+"""
+
+# OpportunityCreate no acepta minimum_contribution_cents (Pydantic lo descartaría
+# sin avisar), así que se informa por SQL una vez creada la oportunidad.
+SET_MINIMUM_CONTRIBUTION_SQL = """
+    UPDATE public.opportunities
+    SET minimum_contribution_cents = %(minimum_contribution_cents)s
+    WHERE title = %(title)s
 """
 
 
@@ -193,8 +344,8 @@ def get_backend_port() -> int:
     return port
 
 
-def inject_real_estate_details():
-    """Inserta por SQL los datos de real_estate_opportunities de las oportunidades ya creadas."""
+def inject_sql_only_data():
+    """Inserta por SQL los datos sin endpoint (aportación mínima y real_estate_opportunities) de las oportunidades ya creadas."""
     env = load_env()
     missing = [k for k in ("POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_PORT") if k not in env]
     if missing:
@@ -209,12 +360,25 @@ def inject_real_estate_details():
     )
     try:
         with connection.cursor() as cursor:
+            for opp in opportunities:
+                cursor.execute(
+                    SET_MINIMUM_CONTRIBUTION_SQL,
+                    {"title": opp["title"], "minimum_contribution_cents": opp["minimum_contribution_cents"]},
+                )
+                if cursor.rowcount != 1:
+                    raise RuntimeError(
+                        f"No se pudo informar la aportación mínima de {opp['title']}: "
+                        f"se encontraron {cursor.rowcount} oportunidades"
+                    )
+                print(f"✅ Aportación mínima informada: {opp['title']}")
             for title, details in real_estate_details.items():
                 cursor.execute(INSERT_REAL_ESTATE_SQL, {"title": title, **details})
-                if cursor.rowcount:
-                    print(f"✅ Datos inmobiliarios insertados: {title}")
-                else:
-                    print(f"ℹ️ Sin cambios (ya existían o no se encontró la oportunidad): {title}")
+                if cursor.rowcount != 1:
+                    raise RuntimeError(
+                        f"No se pudieron insertar los datos inmobiliarios de {title}: "
+                        "la oportunidad no existe o ya tiene datos"
+                    )
+                print(f"✅ Datos inmobiliarios insertados: {title}")
         connection.commit()
     except Exception:
         connection.rollback()
@@ -238,7 +402,9 @@ def seed_database(backend_url: str = "http://localhost:8000"):
         if register_response.status_code == 201:
             print(f"✅ Usuario creado: {SEED_EMAIL}")
         elif register_response.status_code == 409:
-            print(f"ℹ️ El usuario ya existe: {SEED_EMAIL}")
+            raise RuntimeError(
+                f"El usuario {SEED_EMAIL} ya existe; ejecuta el seed solo sobre una base de datos vacía"
+            )
         else:
             print(
                 "❌ No se pudo registrar el usuario: "
@@ -272,7 +438,10 @@ def seed_database(backend_url: str = "http://localhost:8000"):
         if promoting_entity_response.status_code in (200, 201):
             print(f"✅ Entidad promotora creada: {promoting_entity['legal_name']}")
         elif promoting_entity_response.status_code == 409:
-            print(f"ℹ️ La entidad promotora ya existe: {promoting_entity['legal_name']}")
+            raise RuntimeError(
+                "La entidad promotora del usuario seed ya existe; "
+                "ejecuta el seed solo sobre una base de datos vacía"
+            )
         else:
             print(
                 "❌ No se pudo crear la entidad promotora: "
@@ -280,20 +449,21 @@ def seed_database(backend_url: str = "http://localhost:8000"):
             )
             promoting_entity_response.raise_for_status()
         
+        total = len(opportunities)
         for index, opp in enumerate(opportunities, start=1):
-            try:
-                response = client.post(OPPORTUNITIES_URL.format(API_BASE_URL=backend_url), json=opp, headers=headers)
+            # Solo los campos que acepta OpportunityCreate; el resto va por SQL.
+            payload = {k: v for k, v in opp.items() if k != "minimum_contribution_cents"}
+            response = client.post(OPPORTUNITIES_URL.format(API_BASE_URL=backend_url), json=payload, headers=headers)
 
-                if response.status_code in (200, 201):
-                    print(f"✅ [{index}/6] Inyectada con éxito: {opp['title']}")
-                else:
-                    print(f"❌ [{index}/6] Error al inyectar: {opp['title']}")
-                    print(f"   Detalle: {response.status_code} - {response.text}")
+            if response.status_code in (200, 201):
+                print(f"✅ [{index}/{total}] Inyectada con éxito: {opp['title']}")
+            else:
+                # Un dato que falta hace fallar los E2E más tarde: mejor parar aquí.
+                print(f"❌ [{index}/{total}] Error al inyectar: {opp['title']}")
+                print(f"   Detalle: {response.status_code} - {response.text}")
+                response.raise_for_status()
 
-            except httpx.RequestError as exc:
-                print(f"⚠️ Error de conexión en la petición {index}: {exc}")
-
-    inject_real_estate_details()
+    inject_sql_only_data()
         
         
 
