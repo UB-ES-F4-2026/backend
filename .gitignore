@@ -6,3 +6,6 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .DS_Store
+
+# Informe dels E2E (compose.e2e.yaml)
+e2e-report/
