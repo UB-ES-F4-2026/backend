@@ -1,4 +1,5 @@
 """Offline deployment tests. No Docker, SSH or production data is used."""
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -51,8 +52,14 @@ class DeploymentTests(unittest.TestCase):
             kwargs['output'].write(b'PGDMP-test-archive')
         return ''
 
-    def execute(self, component='backend', sequence=10):
-        deploy.deploy(self.root, component, image(component), SHA, sequence)
+    def execute(self, component='backend', sequence=10, environment='production'):
+        deploy.deploy(self.root, component, image(component), SHA, sequence, environment)
+
+    def prepare_staging(self):
+        (self.root / '.env.production').unlink()
+        (self.root / '.env.staging').write_text(self.original.replace('WEB_PORT=8080', 'WEB_PORT=8082'))
+        (self.root / 'compose.staging.yaml').write_text('services: {}\n')
+        self.project = 'fintech-staging'
 
     def test_rejects_untrusted_arguments(self):
         for bad in ['latest', image('frontend'), image('backend') + '; echo bad']:
@@ -142,6 +149,41 @@ class DeploymentTests(unittest.TestCase):
         self.assertFalse((self.root / 'release-current.json').exists())
         self.assertEqual((self.root / '.env.production').read_text(), self.original)
         self.assertTrue((self.root / 'DEPLOYMENT_BLOCKED.json').exists())
+
+    def test_production_compose_command_unchanged(self):
+        self.execute()
+        base = ['docker', 'compose', '-p', 'fintech-prod', '--env-file', str(self.root / '.env.production'),
+                '-f', str(self.root / 'compose.production.yaml')]
+        self.assertEqual(self.calls[0], base + ['config', '--quiet'])
+        record = json.loads((self.root / 'release-current.json').read_text())
+        expected = hashlib.sha256((self.root / 'compose.production.yaml').read_bytes()).hexdigest()
+        self.assertEqual(record['compose_sha256'], expected)
+
+    def test_staging_uses_own_project_env_and_override(self):
+        self.prepare_staging()
+        self.execute(environment='staging')
+        base = ['docker', 'compose', '-p', 'fintech-staging', '--env-file', str(self.root / '.env.staging'),
+                '-f', str(self.root / 'compose.production.yaml'), '-f', str(self.root / 'compose.staging.yaml')]
+        self.assertEqual(self.calls[0], base + ['config', '--quiet'])
+        self.assertFalse(any('fintech-prod' in c for c in self.calls))
+        self.assertFalse((self.root / '.env.production').exists())
+        self.assertIn('BACKEND_IMAGE=' + image('backend'), (self.root / '.env.staging').read_text())
+        record = json.loads((self.root / 'release-current.json').read_text())
+        expected = hashlib.sha256((self.root / 'compose.production.yaml').read_bytes()
+                                  + (self.root / 'compose.staging.yaml').read_bytes()).hexdigest()
+        self.assertEqual(record['compose_sha256'], expected)
+
+    def test_staging_refuses_production_containers(self):
+        self.prepare_staging()
+        self.project = 'fintech-prod'
+        with self.assertRaises(RuntimeError):
+            self.execute(environment='staging')
+        self.assertFalse(any('stop' in c for c in self.calls))
+
+    def test_unknown_environment_refused(self):
+        with self.assertRaises(RuntimeError):
+            self.execute(environment='preproduction')
+        self.assertEqual(self.calls, [])
 
     def test_wrong_image_revision_refused_before_mutation(self):
         with self.assertRaises(RuntimeError):
