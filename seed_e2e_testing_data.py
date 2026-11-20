@@ -352,7 +352,7 @@ def inject_sql_only_data():
         raise RuntimeError(f"Faltan variables en el .env: {', '.join(missing)}")
 
     connection = pg.connect(
-        host="127.0.0.1",  # compose publica Postgres solo en localhost
+        host=env.get("POSTGRES_HOST", "127.0.0.1"),  # compose publica Postgres solo en localhost
         port=int(env["POSTGRES_PORT"]),
         dbname=env["POSTGRES_DB"],
         user=env["POSTGRES_USER"],
