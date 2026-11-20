@@ -1,7 +1,7 @@
 """Add promoter founding year
 
 Revision ID: 3b4692f967ff
-Revises: a6b27f4c91de
+Revises: 7ea1a0d4de53
 Create Date: 2026-11-16 15:25:36.756966
 """
 from typing import Sequence, Union
