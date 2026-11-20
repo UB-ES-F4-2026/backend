@@ -196,7 +196,6 @@ class OpportunityDetailTest(unittest.TestCase):
         cases = {
             "draft": {"status": OpportunityStatus.DRAFT, "date_published": None},
             "rejected": {"status": OpportunityStatus.REJECTED, "date_published": None},
-            "equity": {"type": OpportunityType.EQUITY, "real_estate": False},
             "real estate without property data": {"real_estate": False},
         }
         for name, changes in cases.items():

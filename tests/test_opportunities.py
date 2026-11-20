@@ -119,8 +119,7 @@ class OpportunitiesTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 422)
 
-    def test_get_opportunity_hides_non_real_estate_opportunities(self):
-        # US02.2.1: el detalle solo muestra oportunidades inmobiliarias.
+    def test_equity_detail_without_business_data_returns_not_found(self):
         created = self.client.post(
             "/api/opportunities",
             json=self.opportunity_body(type="equity"),

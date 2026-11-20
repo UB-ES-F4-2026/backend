@@ -15,6 +15,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.business_opportunity import BusinessOpportunity
 from app.models.promoting_entity import PromotingEntity
 from app.models.real_estate_opportunity import RealEstateOpportunity
 
@@ -100,5 +101,8 @@ class Opportunity(Base):
     promoter: Mapped[PromotingEntity] = relationship()
     # Datos específicos de la categoría inmobiliaria, si los tiene.
     real_estate: Mapped[RealEstateOpportunity | None] = relationship(
+        back_populates="opportunity", cascade="all, delete-orphan", passive_deletes=True
+    )
+    business: Mapped[BusinessOpportunity | None] = relationship(
         back_populates="opportunity", cascade="all, delete-orphan", passive_deletes=True
     )
