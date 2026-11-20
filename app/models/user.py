@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 if TYPE_CHECKING:
+    from app.models.promoting_entity import PromotingEntity
     from app.models.wallet import Wallet
 
 
@@ -26,3 +27,13 @@ class User(Base):
     wallet: Mapped["Wallet"] = relationship(
         back_populates="user", cascade="all, delete-orphan", single_parent=True
     )
+    promoting_entity: Mapped["PromotingEntity | None"] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        single_parent=True,
+        uselist=False,
+    )
+
+    @property
+    def is_promoter(self) -> bool:
+        return self.promoting_entity is not None
