@@ -1,7 +1,7 @@
 """Create business opportunities
 
 Revision ID: 0f4afe25bff8
-Revises: a6b27f4c91de
+Revises: 36d25506c764
 Create Date: 2026-11-16 17:42:30.119193
 """
 from typing import Sequence, Union
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 
 revision: str = '0f4afe25bff8'
-down_revision: Union[str, Sequence[str], None] = 'a6b27f4c91de'
+down_revision: Union[str, Sequence[str], None] = '36d25506c764'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
