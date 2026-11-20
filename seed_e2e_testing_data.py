@@ -1,10 +1,22 @@
+#!/usr/bin/env python3
+"""Seed de datos de demostración para la plataforma Fintech.
+
+Combina las oportunidades inmobiliarias y de equity, crea el usuario y la
+entidad promotora mediante la API e inserta por SQL los campos que no expone
+el endpoint de creación de oportunidades.
+
+El script es parcialmente idempotente: acepta que el usuario, la entidad
+promotora o una oportunidad ya existan, y actualiza los metadatos SQL para
+que el resultado quede alineado con los datos definidos aquí.
+"""
+
 import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
 
-try:  # psycopg 3 o psycopg2: la API que usamos es la misma en ambos
+try:  # psycopg 3 o psycopg2: la API utilizada es compatible en ambos casos
     import psycopg as pg
 except ImportError:
     import psycopg2 as pg
@@ -18,15 +30,22 @@ SEED_PASSWORD = "inyector-fintech-2026"
 
 
 def deadline_in(days: int) -> str:
-    """Fecha límite relativa a la ejecución: una fecha fija caduca y la oportunidad sale del catálogo."""
+    """Devuelve una fecha límite relativa a la ejecución del seed (UTC)."""
     return (datetime.now(UTC) + timedelta(days=days)).isoformat()
 
 
 def date_in(days: int) -> str:
+    """Devuelve una fecha futura relativa al día de ejecución del seed."""
     return (datetime.now(UTC).date() + timedelta(days=days)).isoformat()
 
 
-# Datos con las modificaciones aplicadas (imágenes y localización)
+# ---------------------------------------------------------------------------
+# Datos de oportunidades
+# Se conserva el catálogo ampliado de 12 oportunidades de la primera versión.
+# Las fechas se calculan en tiempo de ejecución para evitar que caduquen por
+# utilizar fechas fijas en un seed que se ejecute más adelante.
+# ---------------------------------------------------------------------------
+
 opportunities = [
     {
         "type": "real_estate",
@@ -169,8 +188,13 @@ promoting_entity = {
     "location": "Madrid, España"
 }
 
-# Datos de real_estate_opportunities. No hay endpoint para crearlos, así que se
-# insertan por SQL, enlazando con la oportunidad por título (los ids los asigna el backend).
+# ---------------------------------------------------------------------------
+# Metadatos específicos que no admite OpportunityCreate.
+# Los datos inmobiliarios proceden de la primera versión y los empresariales
+# de la segunda. Se insertan/actualizan por SQL después de crear las
+# oportunidades mediante la API.
+# ---------------------------------------------------------------------------
+
 real_estate_details = {
     "Rehabilitación de Edificio Histórico en L'Eixample": {
         "purpose": "acquisition_and_renovation",
@@ -284,6 +308,25 @@ real_estate_details = {
     },
 }
 
+business_details = {
+    "Ronda Seed - EcoLogistics SL": {
+        "sector": "logistic",
+        "phase": "seed",
+        "pre_investment_valuation_cents": 360000000,
+    },
+    "Ampliación de Capital - HealthAI Solutions": {
+        "sector": "health",
+        "phase": "growth",
+        "pre_investment_valuation_cents": 340000000,
+    },
+}
+
+UPDATE_MINIMUM_CONTRIBUTION_SQL = """
+    UPDATE public.opportunities
+    SET minimum_contribution_cents = %(minimum_contribution_cents)s
+    WHERE title = %(title)s AND type = %(type)s
+"""
+
 INSERT_REAL_ESTATE_SQL = """
     INSERT INTO public.real_estate_opportunities (
         opportunity_id, purpose, intended_use, asset_type, surface_m2,
@@ -303,35 +346,69 @@ INSERT_REAL_ESTATE_SQL = """
         %(public_longitude)s::numeric
     FROM public.opportunities o
     WHERE o.title = %(title)s AND o.type = 'real_estate'
-    ON CONFLICT (opportunity_id) DO NOTHING
+    ON CONFLICT (opportunity_id) DO UPDATE SET
+        purpose = EXCLUDED.purpose,
+        intended_use = EXCLUDED.intended_use,
+        asset_type = EXCLUDED.asset_type,
+        surface_m2 = EXCLUDED.surface_m2,
+        planned_housing_units = EXCLUDED.planned_housing_units,
+        estimated_works_end = EXCLUDED.estimated_works_end,
+        estimated_rental_start = EXCLUDED.estimated_rental_start,
+        public_latitude = EXCLUDED.public_latitude,
+        public_longitude = EXCLUDED.public_longitude
+    RETURNING opportunity_id
 """
 
-# OpportunityCreate no acepta minimum_contribution_cents (Pydantic lo descartaría
-# sin avisar), así que se informa por SQL una vez creada la oportunidad.
-SET_MINIMUM_CONTRIBUTION_SQL = """
-    UPDATE public.opportunities
-    SET minimum_contribution_cents = %(minimum_contribution_cents)s
-    WHERE title = %(title)s
+INSERT_BUSINESS_SQL = """
+    INSERT INTO public.business_opportunities (
+        opportunity_id, sector, phase, pre_investment_valuation_cents
+    )
+    SELECT
+        o.id,
+        %(sector)s::business_sector,
+        %(phase)s::business_phase,
+        %(pre_investment_valuation_cents)s::integer
+    FROM public.opportunities o
+    WHERE o.title = %(title)s AND o.type = 'equity'
+    ON CONFLICT (opportunity_id) DO UPDATE SET
+        sector = EXCLUDED.sector,
+        phase = EXCLUDED.phase,
+        pre_investment_valuation_cents = EXCLUDED.pre_investment_valuation_cents
+    RETURNING opportunity_id
 """
 
 
 def load_env() -> dict[str, str]:
-    """Lee el .env del backend (sin dependencias); las variables de entorno tienen prioridad."""
+    """Lee el .env del backend; las variables de entorno tienen prioridad."""
     here = Path(__file__).resolve().parent
     values: dict[str, str] = {}
-    for candidate in (here / "backend" / ".env", here / ".env", here.parent / ".env", Path.cwd() / ".env"):
-        if candidate.is_file():
-            for line in candidate.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    key, _, value = line.partition("=")
-                    values[key.strip()] = value.strip().strip("\"'")
-            break
-    return {**values, **{k: v for k, v in os.environ.items() if k.startswith("POSTGRES_") or k == "BACKEND_PORT"}}
+    candidates = (
+        here / "backend" / ".env",
+        here / ".env",
+        here.parent / ".env",
+        Path.cwd() / ".env",
+    )
+
+    for candidate in candidates:
+        if not candidate.is_file():
+            continue
+        for line in candidate.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, _, value = line.partition("=")
+                values[key.strip()] = value.strip().strip("\"'")
+        break
+
+    environment_values = {
+        key: value
+        for key, value in os.environ.items()
+        if key.startswith("POSTGRES_") or key == "BACKEND_PORT"
+    }
+    return {**values, **environment_values}
 
 
 def get_backend_port() -> int:
-    """Puerto del backend publicado por compose (BACKEND_PORT en el .env)."""
+    """Obtiene y valida el puerto del backend publicado por Docker Compose."""
     raw = load_env().get("BACKEND_PORT")
     if raw is None:
         raise RuntimeError("Falta BACKEND_PORT en el .env")
@@ -344,41 +421,79 @@ def get_backend_port() -> int:
     return port
 
 
-def inject_sql_only_data():
-    """Inserta por SQL los datos sin endpoint (aportación mínima y real_estate_opportunities) de las oportunidades ya creadas."""
+def get_database_connection():
+    """Abre una conexión a PostgreSQL usando la configuración del .env."""
     env = load_env()
-    missing = [k for k in ("POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_PORT") if k not in env]
+    required = ("POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_PORT")
+    missing = [key for key in required if not env.get(key)]
     if missing:
         raise RuntimeError(f"Faltan variables en el .env: {', '.join(missing)}")
 
-    connection = pg.connect(
-        host="127.0.0.1",  # compose publica Postgres solo en localhost
-        port=int(env["POSTGRES_PORT"]),
+    try:
+        db_port = int(env["POSTGRES_PORT"])
+    except ValueError:
+        raise RuntimeError("POSTGRES_PORT no es un número válido") from None
+    if not 0 < db_port <= 65535:
+        raise RuntimeError(f"POSTGRES_PORT fuera de rango (1-65535): {db_port}")
+
+    return pg.connect(
+        host="127.0.0.1",  # Compose publica PostgreSQL únicamente en localhost
+        port=db_port,
         dbname=env["POSTGRES_DB"],
         user=env["POSTGRES_USER"],
         password=env["POSTGRES_PASSWORD"],
     )
+
+
+def inject_sql_only_data() -> None:
+    """Actualiza aportaciones mínimas y metadatos inmobiliarios/empresariales.
+
+    Todas las operaciones SQL se ejecutan en una única transacción. Los
+    metadatos especializados utilizan UPSERT, por lo que repetir el seed
+    actualiza los valores existentes en lugar de dejarlos desfasados.
+    """
+    connection = get_database_connection()
     try:
         with connection.cursor() as cursor:
-            for opp in opportunities:
+            # OpportunityCreate descarta minimum_contribution_cents, así que
+            # este campo se establece directamente en la tabla principal.
+            for opportunity in opportunities:
                 cursor.execute(
-                    SET_MINIMUM_CONTRIBUTION_SQL,
-                    {"title": opp["title"], "minimum_contribution_cents": opp["minimum_contribution_cents"]},
+                    UPDATE_MINIMUM_CONTRIBUTION_SQL,
+                    {
+                        "title": opportunity["title"],
+                        "type": opportunity["type"],
+                        "minimum_contribution_cents": opportunity[
+                            "minimum_contribution_cents"
+                        ],
+                    },
                 )
                 if cursor.rowcount != 1:
                     raise RuntimeError(
-                        f"No se pudo informar la aportación mínima de {opp['title']}: "
-                        f"se encontraron {cursor.rowcount} oportunidades"
+                        "No se pudo actualizar la aportación mínima de "
+                        f"{opportunity['title']}: se encontraron "
+                        f"{cursor.rowcount} filas (se esperaba exactamente 1)"
                     )
-                print(f"✅ Aportación mínima informada: {opp['title']}")
+                print(f"✅ Aportación mínima informada: {opportunity['title']}")
+
             for title, details in real_estate_details.items():
                 cursor.execute(INSERT_REAL_ESTATE_SQL, {"title": title, **details})
-                if cursor.rowcount != 1:
+                if cursor.fetchone() is None:
                     raise RuntimeError(
-                        f"No se pudieron insertar los datos inmobiliarios de {title}: "
-                        "la oportunidad no existe o ya tiene datos"
+                        "No se encontraron los datos de la oportunidad inmobiliaria "
+                        f"'{title}'. Comprueba que se haya creado mediante la API."
                     )
-                print(f"✅ Datos inmobiliarios insertados: {title}")
+                print(f"✅ Datos inmobiliarios insertados/actualizados: {title}")
+
+            for title, details in business_details.items():
+                cursor.execute(INSERT_BUSINESS_SQL, {"title": title, **details})
+                if cursor.fetchone() is None:
+                    raise RuntimeError(
+                        "No se encontraron los datos de la oportunidad de equity "
+                        f"'{title}'. Comprueba que se haya creado mediante la API."
+                    )
+                print(f"✅ Datos empresariales insertados/actualizados: {title}")
+
         connection.commit()
     except Exception:
         connection.rollback()
@@ -387,8 +502,9 @@ def inject_sql_only_data():
         connection.close()
 
 
-def seed_database(backend_url: str = "http://localhost:8000"):
-    with httpx.Client() as client:
+def seed_database(backend_url: str) -> None:
+    """Crea (o reutiliza) usuario y entidad, y registra todas las oportunidades."""
+    with httpx.Client(timeout=30.0) as client:
         register_response = client.post(
             REGISTER_URL.format(API_BASE_URL=backend_url),
             json={
@@ -398,13 +514,10 @@ def seed_database(backend_url: str = "http://localhost:8000"):
                 "phone": "+34612345678",
             },
         )
-
         if register_response.status_code == 201:
             print(f"✅ Usuario creado: {SEED_EMAIL}")
         elif register_response.status_code == 409:
-            raise RuntimeError(
-                f"El usuario {SEED_EMAIL} ya existe; ejecuta el seed solo sobre una base de datos vacía"
-            )
+            print(f"ℹ️ El usuario ya existe: {SEED_EMAIL}")
         else:
             print(
                 "❌ No se pudo registrar el usuario: "
@@ -414,10 +527,7 @@ def seed_database(backend_url: str = "http://localhost:8000"):
 
         login_response = client.post(
             LOGIN_URL.format(API_BASE_URL=backend_url),
-            json={
-                "email": SEED_EMAIL,
-                "password": SEED_PASSWORD,
-            },
+            json={"email": SEED_EMAIL, "password": SEED_PASSWORD},
         )
         login_response.raise_for_status()
 
@@ -433,46 +543,61 @@ def seed_database(backend_url: str = "http://localhost:8000"):
         promoting_entity_response = client.post(
             f"{backend_url}/api/promotingentity",
             json=promoting_entity,
-            headers=headers
+            headers=headers,
         )
         if promoting_entity_response.status_code in (200, 201):
             print(f"✅ Entidad promotora creada: {promoting_entity['legal_name']}")
         elif promoting_entity_response.status_code == 409:
-            raise RuntimeError(
-                "La entidad promotora del usuario seed ya existe; "
-                "ejecuta el seed solo sobre una base de datos vacía"
+            print(
+                "ℹ️ La entidad promotora ya existe: "
+                f"{promoting_entity['legal_name']}"
             )
         else:
             print(
                 "❌ No se pudo crear la entidad promotora: "
-                f"{promoting_entity_response.status_code} - {promoting_entity_response.text}"
+                f"{promoting_entity_response.status_code} - "
+                f"{promoting_entity_response.text}"
             )
             promoting_entity_response.raise_for_status()
-        
+
         total = len(opportunities)
-        for index, opp in enumerate(opportunities, start=1):
-            # Solo los campos que acepta OpportunityCreate; el resto va por SQL.
-            payload = {k: v for k, v in opp.items() if k != "minimum_contribution_cents"}
-            response = client.post(OPPORTUNITIES_URL.format(API_BASE_URL=backend_url), json=payload, headers=headers)
+        for index, opportunity in enumerate(opportunities, start=1):
+            # La API/Pydantic no conserva este campo; se aplica después por SQL.
+            payload = {
+                key: value
+                for key, value in opportunity.items()
+                if key != "minimum_contribution_cents"
+            }
+            response = client.post(
+                OPPORTUNITIES_URL.format(API_BASE_URL=backend_url),
+                json=payload,
+                headers=headers,
+            )
 
             if response.status_code in (200, 201):
-                print(f"✅ [{index}/{total}] Inyectada con éxito: {opp['title']}")
+                print(
+                    f"✅ [{index}/{total}] Inyectada con éxito: "
+                    f"{opportunity['title']}"
+                )
+            elif response.status_code == 409:
+                print(
+                    f"ℹ️ [{index}/{total}] Ya existía: {opportunity['title']}"
+                )
             else:
-                # Un dato que falta hace fallar los E2E más tarde: mejor parar aquí.
-                print(f"❌ [{index}/{total}] Error al inyectar: {opp['title']}")
+                print(f"❌ [{index}/{total}] Error al inyectar: {opportunity['title']}")
                 print(f"   Detalle: {response.status_code} - {response.text}")
                 response.raise_for_status()
 
+    # Se ejecuta después de que la API haya creado (o confirmado) todas las
+    # oportunidades; los datos especializados quedan en una sola transacción.
     inject_sql_only_data()
-        
-        
+
 
 if __name__ == "__main__":
     print("Asegúrate de que el backend esté corriendo antes de ejecutar este script.")
 
     port = get_backend_port()
     print(f"Usando el puerto del backend: {port}")
-
     print("Iniciando inyección de datos (Seed)...")
     seed_database(backend_url=f"http://localhost:{port}")
     print("Proceso finalizado.")
