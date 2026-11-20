@@ -119,11 +119,10 @@ Fet vol dir: tot verd, `alembic check` sense diferències i cada criteri de la i
 Seed i E2E. Per defecte, executa'ls a l'entorn aïllat de `compose.e2e.yaml`: BD buida a cada execució, sense ports publicats ni res instal·lat a l'host, i sense tocar `fintech-local`. Agafa el frontend de `FRONTEND_PATH` (per defecte `../frontend`), així que els tests són els de la branca que hi tinguis:
 
 ```bash
-docker compose -f compose.e2e.yaml run --rm --build playwright
-docker compose -f compose.e2e.yaml down
+sh scripts/run-e2e.sh
 ```
 
-L'ordre retorna el codi de sortida de Playwright i deixa l'informe a `e2e-report/playwright-report/index.html`, també si els tests fallen. Fes sempre el `down` en acabar: si l'entorn queda engegat, la següent execució reutilitza la BD amb les dades del seed anterior.
+L'script atura l'entorn abans i després de cada execució (BD sempre buida), retorna el codi de sortida de Playwright i deixa l'informe a `e2e-report/playwright-report/index.html`, també si els tests fallen.
 
 Només si cal provar-los sobre l'entorn de desenvolupament (`compose.yaml` engegat), el seed necessita `httpx` i `psycopg` al Python de l'host, i Playwright, Node i Chromium a l'host:
 

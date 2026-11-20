@@ -1,7 +1,6 @@
 # Entorn E2E aïllat: executa el seed i els tests de Playwright del frontend.
-# Ús només amb -f compose.e2e.yaml. L'informe queda a e2e-report/:
-#   docker compose -f compose.e2e.yaml run --rm --build playwright
-#   docker compose -f compose.e2e.yaml down
+# Executa'l amb scripts/run-e2e.sh, que l'atura abans i després de cada
+# execució perquè la BD comenci buida. L'informe queda a e2e-report/.
 # Projecte propi, BD en tmpfs i cap port publicat: no toca fintech-local ni els
 # seus volums, i es pot executar amb l'entorn de desenvolupament engegat.
 name: fintech-e2e

@@ -32,14 +32,14 @@ El workflow `E2E Playwright Tests` ejecuta el seed y los tests de Playwright del
 `compose.e2e.yaml` levanta una base de datos vacía, el backend, el frontend, el seed y Playwright, sin publicar puertos ni tocar el entorno de desarrollo. No necesita `.env` ni tener Node o Playwright instalados. Desde `backend`:
 
 ```bash
-docker compose -f compose.e2e.yaml run --rm --build playwright
-docker compose -f compose.e2e.yaml down
+sh scripts/run-e2e.sh
 ```
 
-- El comando devuelve el código de salida de Playwright.
+- El script para el entorno antes y después de cada ejecución, así que la base de datos empieza siempre vacía, aunque una ejecución anterior se interrumpiera.
+- Devuelve el código de salida de Playwright.
 - El informe queda en `e2e-report/playwright-report/index.html`, también si los tests fallan.
-- Usa el frontend de `../frontend`. Para probar otra carpeta o rama, cambia la ruta: `FRONTEND_PATH=/ruta/al/frontend docker compose -f compose.e2e.yaml run --rm --build playwright`.
-- Ejecuta siempre el `down` al terminar: si el entorno queda levantado, la siguiente ejecución reutiliza la base de datos con los datos del seed anterior.
+- Usa el frontend de `../frontend`. Para probar otra carpeta o rama: `FRONTEND_PATH=/ruta/al/frontend sh scripts/run-e2e.sh`.
+- En PowerShell, el equivalente está en el [README](README.md#11-tests-e2e-amb-playwright).
 
 ### Sobre el entorno de desarrollo
 
