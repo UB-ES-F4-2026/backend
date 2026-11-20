@@ -72,10 +72,8 @@ def get_opportunities(
         .where(available_opportunity_filter())
         .order_by(Opportunity.created_at.desc())
     ).all()
-    # Sin búsqueda (o solo espacios) se devuelve el catálogo completo.
     if name is None or not name.strip():
         return list(opportunities)
-    # Solo se busca dentro del catálogo disponible.
     return search_by_title(name, opportunities, lambda opportunity: opportunity.title)
 
 
@@ -86,8 +84,6 @@ def get_opportunities(
 def get_opportunity(
     opportunity_id: int, db: DbSession
 ) -> RealEstateOpportunityDetailRead | BusinessOpportunityDetailRead:
-    # El detalle solo está disponible para oportunidades publicadas o cerradas
-    # que tengan los datos específicos de su categoría.
     row = db.execute(
         select(Opportunity, published_projects_count)
         .join(Opportunity.real_estate)

@@ -90,7 +90,7 @@ class BusinessOpportunityRead(BaseModel):
 
 
 class BusinessOpportunityDetailRead(BaseModel):
-    """Detall d'una oportunitat empresarial accessible amb sessió vàlida."""
+    """Detall d'una oportunitat empresarial accessible sense sessió requerida."""
 
     id: int
     type: OpportunityType
