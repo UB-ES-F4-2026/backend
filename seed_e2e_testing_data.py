@@ -185,6 +185,7 @@ promoting_entity = {
     "legal_name": "Inmobiliaria Completamente Benevolente S.A.",
     "image_url": "https://media.licdn.com/dms/image/v2/D4E12AQGEkrAsxY1QhQ/article-cover_image-shrink_600_2000/article-cover_image-shrink_600_2000/0/1672160148298?e=2147483647&v=beta&t=2tButp2hDwHJwlq_BnGQ2FaEga6yJsHbCqRm8OW6ZSQ",
     "experience_years": 10,
+    "founding_year": 2012,
     "location": "Madrid, España"
 }
 
