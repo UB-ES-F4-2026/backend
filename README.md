@@ -307,6 +307,7 @@ Si necessites ajuda, comparteix **el comandament executat, la carpeta des d'on l
 | Fitxer o carpeta | Responsabilitat |
 |---|---|
 | `compose.yaml` | Serveis, dependències, xarxa, ports i volums |
+| `ruff.toml` | Regles de l'anàlisi estàtica (Ruff) |
 | `Dockerfile`, `requirements.txt` | Entorn Python i dependències |
 | `app/database.py` | Base dels models, motor i sessions de SQLAlchemy |
 | `app/model_registry.py`, `app/models/` | Descobriment i definició dels models |
@@ -321,6 +322,12 @@ Des de `backend`, per validar la configuració de Compose:
 
 ```bash
 docker compose config --quiet
+```
+
+Per passar l'anàlisi estàtica (Ruff) amb la mateixa versió que la CI, sense instal·lar res (detalls a [CI.md](CI.md)):
+
+```bash
+docker run --rm -v "$PWD":/io:z -w /io ghcr.io/astral-sh/ruff:0.17.4 check
 ```
 
 Amb el backend i PostgreSQL en marxa, per executar les proves:

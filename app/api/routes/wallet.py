@@ -1,7 +1,6 @@
 """Routes for wallet balance and deposits."""
-import os
 
-from fastapi import APIRouter, HTTPException, Response, status
+from fastapi import APIRouter, Response
 from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DbSession

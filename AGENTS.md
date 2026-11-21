@@ -84,7 +84,7 @@ Utilitza SQLAlchemy 2.x amb `select(Model)`, `db.scalars()`, `db.scalar()` i `db
 - Valida les dades amb Pydantic.
 - Confirma les escriptures amb `db.commit()` i gestiona errors esperats com `IntegrityError`.
 - No afegeixis dependències noves sense aprovació de l'equip.
-- No pressuposis que `pytest`, `black` o `ruff` estan disponibles.
+- No pressuposis que `pytest` o `black` estan disponibles. Ruff s'executa amb el contenidor i la versió fixada de [CI.md](CI.md), no instal·lat a l'host.
 
 L'autenticació utilitza tokens aleatoris, emmagatzemats com a hashes SHA-256 a `sessions`, i cookies `httpOnly`.
 
@@ -116,6 +116,7 @@ docker compose config --quiet
 docker compose up --build --wait
 docker compose exec backend python -m unittest discover -s tests -v
 docker compose exec backend alembic check
+docker run --rm -v "$PWD":/io:z -w /io ghcr.io/astral-sh/ruff:0.17.4 check
 ```
 
 Per diagnosticar errors:
@@ -141,6 +142,7 @@ Una tasca es considera completada quan:
 - El comportament modificat està cobert per tests.
 - La configuració de Compose és vàlida.
 - Els tests passen, si l'entorn està disponible.
+- Ruff no detecta cap error (`ruff.toml`).
 - `alembic check` no detecta canvis pendents, si s'han modificat models.
 - Les migracions han estat revisades manualment.
 - El seed E2E crea, amb el codi de la branca, totes les dades que els E2E necessiten.

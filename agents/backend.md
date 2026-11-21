@@ -112,9 +112,10 @@ docker compose config --quiet
 docker compose up --build --wait
 docker compose exec backend alembic check
 docker compose exec backend python -m unittest discover -s tests -v
+docker run --rm -v "$PWD":/io:z -w /io ghcr.io/astral-sh/ruff:0.17.4 check
 ```
 
-Fet vol dir: tot verd, `alembic check` sense diferències i cada criteri de la issue amb el seu test o comprovació. Per no tocar l'entorn local, usa l'equivalent amb `-f compose.ci.yaml` de [CI.md](../CI.md).
+Fet vol dir: tot verd, Ruff sense errors, `alembic check` sense diferències i cada criteri de la issue amb el seu test o comprovació. Per no tocar l'entorn local, usa l'equivalent amb `-f compose.ci.yaml` de [CI.md](../CI.md).
 
 Seed i E2E. `compose.ci.yaml` no publica ports, així que el seed corre contra `compose.yaml` i necessita `httpx` i `psycopg` (o `psycopg2`) al Python del host:
 

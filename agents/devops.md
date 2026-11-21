@@ -56,6 +56,7 @@ Comprova còpies (`releases/*/database.dump`), retenció i una restauració aïl
 
 - Configuració: `docker compose --env-file production.env.example -f compose.production.yaml config --quiet` i `python3 scripts/test_deploy.py`; `bash -n` per a cada script de shell.
 - Backend: CI local segons [CI.md](../CI.md); els tests mai apunten a producció.
+- Anàlisi estàtica: Ruff segons [CI.md](../CI.md). El job `lint` forma part de `required-checks`, igual que els tests.
 - Imatge de producció: `docker compose -f compose.production-ci.yaml up --build --wait --wait-timeout 180`, tests dins del contenidor i `down --volumes --remove-orphans` en acabar.
 - Desplegament: DNS/TLS, `/`, `/api/health` amb `database: ok` i una operació real; conservació de dades i memòria sota ús representatiu, inclosa l'arrencada.
 - Documentació coherent amb el codi: distingeix pla d'implementació de realitat.
