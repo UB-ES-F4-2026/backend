@@ -10,7 +10,7 @@ Implementes canvis a l'API: rutes, esquemes, models, migracions i tests. Treball
 4. **Escriu o amplia tests** a `tests/` per a cada criteri i per a cada codi d'error nou.
 5. **Actualitza el seed E2E** segons [Seed E2E](#seed-e2e). Està fet quan, amb el codi de la branca i sobre una BD buida, `seed_e2e_testing_data.py` acaba sense cap ❌. Si el canvi no afecta cap dada del seed, digues-ho al PR amb el motiu.
 6. **Valida** amb les ordres de la secció final. Fins que no passa tot, la tasca no està feta.
-7. **Entrega**: PR cap a la branca `feat/US…` de la història d'usuari (les `feat` es fusionen a `dev`, i `dev` a `main` a cada release) amb `Closes #n`, resum del contracte de l'API (rutes, camps, codis d'estat) perquè el frontend el pugui consumir, els canvis al seed i les decisions preses sobre criteris ambigus.
+7. **Entrega**: PR cap a la branca `feat/US…` de la història d'usuari (les `feat` es fusionen a `dev`; a cada release es crea `release/x.y` des de `dev` i es fusiona a `main`) amb `Closes #n`, resum del contracte de l'API (rutes, camps, codis d'estat) perquè el frontend el pugui consumir, els canvis al seed i les decisions preses sobre criteris ambigus.
 
 ## Mapa del codi
 
@@ -25,7 +25,7 @@ Implementes canvis a l'API: rutes, esquemes, models, migracions i tests. Treball
 | Motor, `Base`, `get_db` | `app/database.py` |
 | Migracions `<hash>_descripcio.py` | `alembic/versions/` |
 | Seed de dades per als E2E i el desenvolupament local | `seed_e2e_testing_data.py` |
-| Workflow E2E (Playwright del frontend `dev` contra aquest backend) | `.github/workflows/e2e-playwright.yml` |
+| Workflow E2E (Playwright del frontend de la mateixa branca que el destí de la PR contra aquest backend) | `.github/workflows/e2e-playwright.yml` |
 | Tests `unittest`, un fitxer per recurs | `tests/` |
 
 ## Convencions
@@ -65,7 +65,7 @@ Implementes canvis a l'API: rutes, esquemes, models, migracions i tests. Treball
 
 ### Seed E2E
 
-`seed_e2e_testing_data.py` omple una BD acabada de migrar amb les dades que els E2E de Playwright i el desenvolupament local utilitzaran. El workflow E2E l'executa en les PR cap a `dev` dels dos repositoris: un seed desfasat fa caure els E2E de tots dos encara que els tests unitaris passin. El seed és part del canvi i va al mateix PR. En definitiva, s'utilitza per nodrir un backend efímer contra el qual s'executen els tests e2e, i pretèn portar una base de dades acabada de migrar i buida a un estat amb dades sintètiques que cobreixin una casuística molt àmplia.
+`seed_e2e_testing_data.py` omple una BD acabada de migrar amb les dades que els E2E de Playwright i el desenvolupament local utilitzaran. El workflow E2E l'executa en les PR cap a `dev`, `release/*` i `main` dels dos repositoris: un seed desfasat fa caure els E2E de tots dos encara que els tests unitaris passin. El seed és part del canvi i va al mateix PR. En definitiva, s'utilitza per nodrir un backend efímer contra el qual s'executen els tests e2e, i pretèn portar una base de dades acabada de migrar i buida a un estat amb dades sintètiques que cobreixin una casuística molt àmplia.
 
 Actualitza'l quan el canvi contingui:
 

@@ -46,7 +46,7 @@ Si la petició no especifica un rol, dedueix-lo i comunica quin apliques. Els ro
 4. Treballa en una branca `task/<n>-<descripció>` per issue.
 5. Mantén els canvis petits i coherents amb l'arquitectura existent.
 6. Afegeix o actualitza tests quan canviï el comportament observable, i el seed E2E (`seed_e2e_testing_data.py`) quan canviïn les dades que l'aplicació necessita: vegeu [agents/backend.md](agents/backend.md#seed-e2e).
-7. Obre una PR cap a la branca `feat/US…` de la història d'usuari, enllaçant la issue amb `Closes #n`. Les `feat` es fusionen a `dev`, i `dev` a `main` a cada release.
+7. Obre una PR cap a la branca `feat/US…` de la història d'usuari, enllaçant la issue amb `Closes #n`. Les `feat` es fusionen a `dev`; a cada release es crea `release/x.y` des de `dev` i es fusiona a `main`.
 8. Comprova que la CI passa abans de fusionar.
 
 Les issues es consulten amb:

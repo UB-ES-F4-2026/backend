@@ -78,6 +78,16 @@ jobs:
     needs: [lint, backend-checks, production-checks]
     runs-on: ubuntu-latest
     steps:
+      # main only receives release/* and hotfix/*; this check is already required on main.
+      - name: Check PR source branch
+        if: github.event_name == 'pull_request' && github.base_ref == 'main'
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          case "$HEAD_REF" in
+            release/*|hotfix/*) ;;
+            *) echo "::error::Las PR hacia main solo pueden salir de release/* o hotfix/* (esta sale de $HEAD_REF)."; exit 1 ;;
+          esac
       - env:
           LINT: ${{ needs.lint.result }}
           DEVELOPMENT: ${{ needs.backend-checks.result }}
