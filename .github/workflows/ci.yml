@@ -73,7 +73,8 @@ jobs:
   publish:
     name: Publish backend image
     needs: required-checks
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')) && needs.required-checks.result == 'success'
+    # main never builds: it deploys the image published from the merged release/* or hotfix/* branch.
+    if: github.event_name == 'push' && (startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/heads/hotfix/')) && needs.required-checks.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
@@ -120,11 +121,67 @@ jobs:
           printf 'image=%s\n' "$digest" >> "$GITHUB_OUTPUT"
           printf '### Backend image\nCommit: `%s`\n\n`%s`\n' "$GITHUB_SHA" "$digest" >> "$GITHUB_STEP_SUMMARY"
 
+  promote:
+    name: Find tested backend image
+    needs: required-checks
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.required-checks.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+          # The merge commit and both parents, to compare main with the merged branch.
+          fetch-depth: 2
+      - name: Resolve digest published for the merged branch
+        id: image
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          source_sha="$(git rev-parse --verify --quiet 'HEAD^2')" || {
+            echo "::error::main no es un merge commit (¿PR fusionada con squash o rebase?): no hay ninguna rama fusionada cuya imagen desplegar. Las PR hacia main se fusionan con «Create a merge commit»."
+            exit 1
+          }
+          git diff --quiet "$source_sha" HEAD || {
+            echo "::error::main no coincide con el commit fusionado $source_sha: no se despliega nada"
+            exit 1
+          }
+
+          trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          image="ghcr.io/${GITHUB_REPOSITORY,,}:$source_sha"
+          docker pull "$image" || {
+            echo "::error::No hay imagen publicada para $source_sha. Espera a que termine la CI de la rama fusionada y vuelve a ejecutar este workflow."
+            exit 1
+          }
+
+          repository="ghcr.io/${GITHUB_REPOSITORY,,}"
+          digest="$(
+            docker image inspect "$image" |
+              jq -r --arg prefix "$repository@sha256:" \
+                '.[0].RepoDigests[] | select(startswith($prefix))' |
+              head -n 1
+          )"
+
+          [[ "$digest" =~ ^ghcr.io/ub-es-f4-2026/backend@sha256:[a-f0-9]{64}$ ]] || {
+            echo "::error::No se ha encontrado el digest publicado en GHCR"
+            exit 1
+          }
+
+          printf 'image=%s\n' "$digest" >> "$GITHUB_OUTPUT"
+          printf '### Backend image\nCommit fusionado: `%s`\n\n`%s`\n' "$source_sha" "$digest" >> "$GITHUB_STEP_SUMMARY"
+
   deploy:
     name: Deploy backend
     environment: production
-    needs: [required-checks, publish]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true' && needs.required-checks.result == 'success' && needs.publish.result == 'success'
+    needs: [required-checks, promote]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true' && needs.required-checks.result == 'success' && needs.promote.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:
@@ -136,7 +193,7 @@ jobs:
       - name: Deploy exact published digest
         env:
           COMPONENT: backend
-          IMAGE: ${{ needs.publish.outputs.image }}
+          IMAGE: ${{ needs.promote.outputs.image }}
           DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
           DEPLOY_USER: ${{ vars.DEPLOY_USER }}
           DEPLOY_PORT: ${{ vars.DEPLOY_PORT }}

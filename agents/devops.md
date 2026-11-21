@@ -14,9 +14,10 @@ Manténs la CI, les imatges, el Compose de producció i el desplegament al servi
 
 ## Com es desplega avui
 
-1. Push a `main` o a `release/*` dispara `.github/workflows/ci.yml`: tests en entorn de desenvolupament i de producció (`required-checks`).
-2. `publish` (`main` i `release/*`) construeix `Dockerfile.production`, la prova amb `compose.production-ci.yaml`, la publica a GHCR etiquetada amb el SHA del commit i exposa el digest.
-3. `deploy` (`main`, només si la variable `DEPLOY_ENABLED` és `true`): `scripts/deploy-ci.sh` valida les entrades i executa per SSH `python3 /app/fintech/deploy.py <component> <digest> <sha> <run>`.
+1. Cada push dispara `.github/workflows/ci.yml`: tests en entorn de desenvolupament i de producció (`required-checks`).
+2. `publish` (`release/*` i `hotfix/*`) construeix `Dockerfile.production`, la prova amb `compose.production-ci.yaml`, la publica a GHCR etiquetada amb el SHA del commit i exposa el digest.
+   `promote` (`main`) no construeix res: comprova que `main` és idèntic a la branca fusionada (`HEAD^2`) i agafa el digest publicat per a aquell commit. Si la imatge no existeix o el codi no coincideix, no es desplega res. Si la PR es fusiona abans que acabi la CI de la branca, cal tornar a executar el workflow de `main` quan acabi.
+3. `deploy` (`main`, només si la variable `DEPLOY_ENABLED` és `true`), amb el digest de `promote`: `scripts/deploy-ci.sh` valida les entrades i executa per SSH `python3 /app/fintech/deploy.py <component> <digest> <sha> <run>`.
    `deploy-staging` (`release/*`, només si `STAGING_DEPLOY_ENABLED` és `true`): el mateix script amb `DEPLOY_ENVIRONMENT=staging` executa `python3 /app/fintech-staging/deploy.py --environment staging …`.
 4. `scripts/deploy.py`, instal·lat a la carpeta de cada entorn, pren el lock `.deploy.lock`, es nega si existeix `DEPLOYMENT_BLOCKED.json`, comprova que els serveis són del projecte i estan sans, fa `pg_dump` (component backend), executa `migrate`, aixeca el servei, comprova `/`, `/api/health` i `/api/opportunities`, i deixa el registre a `releases/<id>/release.json` i `release-current.json`. No hi ha rollback automàtic: un desplegament fallit deixa el marcador i s'inspecciona a mà.
 5. `deploy-check.yml` (manual) fa un preflight SSH de només lectura.
@@ -30,7 +31,7 @@ La CI no copia fitxers al servidor. Quan canvien `scripts/deploy.py`, `compose.p
 
 ### Desplegament
 
-Preparar o canviar CI, imatges, Compose productiu i scripts. Abans de desplegar: revisió exacta provada, versió dels dos components, migracions pendents. Després: release anterior, canvis, comprovacions i resultat. Es publica només des de `main` amb CI verda; una acció reversible sobre codi no autoritza per si sola un desplegament.
+Preparar o canviar CI, imatges, Compose productiu i scripts. Abans de desplegar: revisió exacta provada, versió dels dos components, migracions pendents. Després: release anterior, canvis, comprovacions i resultat. Es publica només des de `release/*` i `hotfix/*` amb CI verda, i producció només rep imatges publicades així; una acció reversible sobre codi no autoritza per si sola un desplegament.
 
 ### Incidents
 
