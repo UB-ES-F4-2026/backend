@@ -1,6 +1,9 @@
 """Create and read investment opportunities through the API."""
+import json
 import unittest
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from uuid import uuid4
 
 from alembic import command
@@ -9,11 +12,13 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.orm import sessionmaker
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, get_optional_current_user
+from app.core import media
 from app.database import engine, get_db
 from app.main import app
 from app.models.commitment import Commitment
 from app.models.opportunity import Opportunity, OpportunityStatus
+from app.models.opportunity_image import OpportunityImage
 from app.models.promoting_entity import PromotingEntity
 from app.models.user import User
 from app.models.wallet import Wallet
@@ -22,6 +27,9 @@ from app.models.wallet import Wallet
 class OpportunitiesTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        cls.media_directory = TemporaryDirectory()
+        cls.previous_media_root = media.MEDIA_ROOT
+        media.MEDIA_ROOT = Path(cls.media_directory.name)
         cls.database = "opportunities_test_" + uuid4().hex
         with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
             connection.execute(text(f'CREATE DATABASE "{cls.database}"'))
@@ -60,6 +68,8 @@ class OpportunitiesTest(unittest.TestCase):
         cls.isolated.dispose()
         with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
             connection.execute(text(f'DROP DATABASE "{cls.database}" WITH (FORCE)'))
+        media.MEDIA_ROOT = cls.previous_media_root
+        cls.media_directory.cleanup()
 
     def opportunity_body(self, **changes):
         body = {
@@ -87,20 +97,22 @@ class OpportunitiesTest(unittest.TestCase):
             wallet.committed_cents = 0
         self.session.commit()
 
+    def post_opportunity(self, body: dict, images=None):
+        image_files = images if images is not None else [
+            ("image.png", b"\x89PNG\r\n\x1a\nimage", "image/png"),
+        ]
+        files = [("metadata", (None, json.dumps(body)))]
+        files.extend(("images", image) for image in image_files)
+        return self.client.post("/api/opportunities", files=files)
+
     def test_create_opportunity_requires_authentication(self):
         app.dependency_overrides.pop(get_current_user)
-        response = self.client.post(
-            "/api/opportunities",
-            json=self.opportunity_body(),
-        )
+        response = self.post_opportunity(self.opportunity_body())
         app.dependency_overrides[get_current_user] = lambda: self.user
         self.assertEqual(response.status_code, 401)
 
     def test_create_opportunity_assigns_current_user(self):
-        response = self.client.post(
-            "/api/opportunities",
-            json=self.opportunity_body(),
-        )
+        response = self.post_opportunity(self.opportunity_body())
 
         self.assertEqual(response.status_code, 201)
         body = response.json()
@@ -114,6 +126,12 @@ class OpportunitiesTest(unittest.TestCase):
         self.assertEqual(opportunity.status, OpportunityStatus.DRAFT)
         self.assertEqual(opportunity.location, "Barcelona, Barcelona, Spain")
         self.assertEqual(opportunity.minimum_contribution_cents, 5000)
+        self.assertEqual(len(body["images"]), 1)
+        self.assertEqual(body["cover_image_url"], body["images"][0]["url"])
+        image = self.session.scalar(
+            select(OpportunityImage).where(OpportunityImage.opportunity_id == body["id"])
+        )
+        self.assertEqual(image.position, 0)
         catalog = self.client.get("/api/opportunities")
         self.assertNotIn(body["id"], [item["id"] for item in catalog.json()])
 
@@ -122,10 +140,7 @@ class OpportunitiesTest(unittest.TestCase):
         self.session.add(user)
         self.session.commit()
         app.dependency_overrides[get_current_user] = lambda: user
-        response = self.client.post(
-            "/api/opportunities",
-            json=self.opportunity_body(),
-        )
+        response = self.post_opportunity(self.opportunity_body())
         app.dependency_overrides[get_current_user] = lambda: self.user
         self.assertEqual(response.status_code, 403)
 
@@ -148,15 +163,32 @@ class OpportunitiesTest(unittest.TestCase):
 
         for body in invalid_bodies:
             with self.subTest(body=body):
-                response = self.client.post("/api/opportunities", json=body)
+                response = self.post_opportunity(body)
+                self.assertEqual(response.status_code, 422)
+
+    def test_create_opportunity_validates_images(self):
+        invalid_images = (
+            [],
+            [("text.txt", b"not-an-image", "text/plain")],
+            [
+                (
+                    "large.png",
+                    b"\x89PNG\r\n\x1a\n" + b"x" * (media.MAX_IMAGE_BYTES + 1),
+                    "image/png",
+                )
+            ],
+        )
+
+        for images in invalid_images:
+            with self.subTest(images=images):
+                response = self.post_opportunity(self.opportunity_body(), images=images)
                 self.assertEqual(response.status_code, 422)
 
     def test_initial_contribution_reserves_funds_with_the_new_opportunity(self):
         self.set_wallet_balance(10000)
 
-        response = self.client.post(
-            "/api/opportunities",
-            json=self.opportunity_body(initial_contribution_cents=7500),
+        response = self.post_opportunity(
+            self.opportunity_body(initial_contribution_cents=7500)
         )
 
         self.assertEqual(response.status_code, 201)
@@ -172,15 +204,42 @@ class OpportunitiesTest(unittest.TestCase):
         self.assertEqual(opportunity.status, OpportunityStatus.DRAFT)
         self.assertEqual(commitment.amount_cents, 7500)
 
+    def test_opportunity_images_keep_their_order_and_access_rules(self):
+        response = self.post_opportunity(
+            self.opportunity_body(),
+            images=[
+                ("cover.png", b"\x89PNG\r\n\x1a\ncover", "image/png"),
+                ("gallery.webp", b"RIFF\x00\x00\x00\x00WEBPimage", "image/webp"),
+            ],
+        )
+
+        self.assertEqual(response.status_code, 201)
+        body = response.json()
+        self.assertEqual([image["position"] for image in body["images"]], [0, 1])
+        cover_url = body["cover_image_url"]
+        self.assertEqual(self.client.get(cover_url).status_code, 404)
+
+        app.dependency_overrides[get_optional_current_user] = lambda: self.user
+        owner_response = self.client.get(cover_url)
+        app.dependency_overrides.pop(get_optional_current_user)
+        self.assertEqual(owner_response.status_code, 200)
+        self.assertEqual(owner_response.headers["content-type"], "image/png")
+        self.assertEqual(owner_response.content, b"\x89PNG\r\n\x1a\ncover")
+
+        opportunity = self.session.get(Opportunity, body["id"])
+        opportunity.status = OpportunityStatus.PUBLISHED
+        opportunity.date_published = datetime.now(UTC)
+        self.session.commit()
+        self.assertEqual(self.client.get(cover_url).status_code, 200)
+
     def test_insufficient_initial_contribution_does_not_create_partial_data(self):
         self.set_wallet_balance(5000)
         commitments_before = self.session.scalar(select(func.count()).select_from(Commitment))
 
-        response = self.client.post(
-            "/api/opportunities",
-            json=self.opportunity_body(
+        response = self.post_opportunity(
+            self.opportunity_body(
                 title="Rollback opportunity", initial_contribution_cents=7500
-            ),
+            )
         )
 
         self.assertEqual(response.status_code, 409)
@@ -198,10 +257,7 @@ class OpportunitiesTest(unittest.TestCase):
 
     def test_get_opportunity_hides_non_real_estate_opportunities(self):
         # US02.2.1: el detalle solo muestra oportunidades inmobiliarias.
-        created = self.client.post(
-            "/api/opportunities",
-            json=self.opportunity_body(type="equity"),
-        )
+        created = self.post_opportunity(self.opportunity_body(type="equity"))
         opportunity_id = created.json()["id"]
 
         response = self.client.get(f"/api/opportunities/{opportunity_id}")
