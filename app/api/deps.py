@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.security import SESSION_COOKIE, hash_session_token
 from app.database import get_db
-from app.models.session import SESSION_IDLE_TIMEOUT, UserSession
+from app.models.session import UserSession
 from app.models.user import User
 
 DbSession = Annotated[Session, Depends(get_db)]
