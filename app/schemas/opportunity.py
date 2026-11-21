@@ -10,6 +10,17 @@ from app.models.real_estate_opportunity import AssetType, IntendedUse, RealEstat
 from app.schemas.promoting_entity import PromotingEntityRead
 
 
+class OpportunityImageRead(BaseModel):
+    """Referència pública a una imatge ordenada d'una oportunitat."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    content_type: str
+    position: int
+    url: str
+
+
 class OpportunityRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -20,6 +31,7 @@ class OpportunityRead(BaseModel):
     description: str
     location: str
     cover_image_url: str | None
+    images: list[OpportunityImageRead] = Field(default_factory=list)
     target_amount_cents: int
     committed_cents: int
     deadline: datetime
@@ -27,6 +39,12 @@ class OpportunityRead(BaseModel):
     date_closed: datetime | None
     created_at: datetime
     updated_at: datetime
+
+    @model_validator(mode="after")
+    def set_cover_image_from_gallery(self) -> "OpportunityRead":
+        if self.images:
+            self.cover_image_url = self.images[0].url
+        return self
 
 class OpportunityLocationCreate(BaseModel):
     municipality: str = Field(min_length=1, max_length=100)
@@ -113,6 +131,7 @@ class OpportunityDetailRead(BaseModel):
     description: str
     location: str
     cover_image_url: str | None
+    images: list[OpportunityImageRead] = Field(default_factory=list)
     target_amount_cents: int
     committed_cents: int
     minimum_contribution_cents: int | None
@@ -122,3 +141,9 @@ class OpportunityDetailRead(BaseModel):
     real_estate: RealEstateOpportunityRead
     # Referencia temporal para que el frontend no dependa del reloj local.
     server_time: datetime
+
+    @model_validator(mode="after")
+    def set_cover_image_from_gallery(self) -> "OpportunityDetailRead":
+        if self.images:
+            self.cover_image_url = self.images[0].url
+        return self
