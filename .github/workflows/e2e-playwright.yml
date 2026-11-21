@@ -26,21 +26,33 @@ jobs:
 
       # 2. Checkout del código del frontend, de la misma rama que el destino de la PR
       #    (dev, release/x.y o main), para probar las dos partes de la misma versión.
-      - name: Check Frontend Branch
+      #    Una PR de release/* o hotfix/* hacia main usa la rama homónima del frontend
+      #    si existe: es la combinación que se desplegará.
+      - name: Choose Frontend Branch
+        id: frontend-ref
         env:
           BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
         run: |
-          git ls-remote --exit-code --heads https://github.com/UB-ES-F4-2026/frontend.git "refs/heads/$BASE_REF" >/dev/null || {
-            echo "::error::El frontend no tiene la rama $BASE_REF. Créala desde la rama equivalente antes de abrir esta PR."
+          repo=https://github.com/UB-ES-F4-2026/frontend.git
+          ref="$BASE_REF"
+          if [[ "$BASE_REF" == main && ( "$HEAD_REF" == release/* || "$HEAD_REF" == hotfix/* ) ]] &&
+             git ls-remote --exit-code --heads "$repo" "refs/heads/$HEAD_REF" >/dev/null; then
+            ref="$HEAD_REF"
+          fi
+          git ls-remote --exit-code --heads "$repo" "refs/heads/$ref" >/dev/null || {
+            echo "::error::El frontend no tiene la rama $ref. Créala desde la rama equivalente antes de abrir esta PR."
             exit 1
           }
+          echo "E2E con el frontend de $ref"
+          printf 'ref=%s\n' "$ref" >> "$GITHUB_OUTPUT"
 
       - name: Checkout Frontend
         uses: actions/checkout@v4
         with:
           repository: UB-ES-F4-2026/frontend
           path: frontend
-          ref: ${{ github.base_ref }}
+          ref: ${{ steps.frontend-ref.outputs.ref }}
 
       # 3. Preparar entorno para Docker Compose
       - name: Setup Environment

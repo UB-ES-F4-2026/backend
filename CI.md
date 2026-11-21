@@ -11,7 +11,7 @@ GitHub Actions pasa el análisis estático (Ruff), construye el backend y ejecut
 | PR hacia `dev` o `release/*` | E2E de Playwright (`e2e-playwright.yml`) | No: la PR sale en rojo, pero `dev` y `release/*` no tienen checks obligatorios |
 | PR hacia `main` | Ruff, tests, origen de la PR y E2E | Sí, «Backend required checks» (Ruff, tests y origen). Los E2E salen en rojo si fallan, pero no son obligatorios |
 
-- Los E2E usan el frontend de la misma rama que el destino de la PR (`dev`, `release/x.y` o `main`). Si el frontend no tiene esa rama, fallan con un mensaje que lo indica.
+- Los E2E usan el frontend de la misma rama que el destino de la PR (`dev`, `release/x.y` o `main`). En una PR de `release/*` o `hotfix/*` hacia `main`, si el frontend tiene una rama con el mismo nombre, usan esa: es la combinación que se desplegará. Si el frontend no tiene la rama necesaria, fallan con un mensaje que lo indica.
 - A `main` solo se llega desde `release/*` o `hotfix/*`. Una PR de `dev` directamente a `main` falla: hay que crear `release/x.y` desde `dev`.
 - Un hotfix sale de `main` y, después de fusionarlo, se lleva también a `dev` con una PR desde `hotfix/*`. Si no, la siguiente release lo desharía.
 - Proteger `dev` y `release/*` con checks obligatorios requiere permisos de administrador del repositorio, que el equipo no tiene.
