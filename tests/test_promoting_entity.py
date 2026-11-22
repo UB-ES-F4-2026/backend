@@ -7,6 +7,7 @@ from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
 from app.database import engine, get_db
@@ -101,6 +102,7 @@ class PromotingEntityTest(unittest.TestCase):
             "image_url": "https://example.com/logo.png",
             "published_projects_count": 0,
             "experience_years": 12,
+            "founding_year": None,
             "location": "Girona, Girona, España",
         })
 
@@ -111,7 +113,33 @@ class PromotingEntityTest(unittest.TestCase):
         body = response.json()
         self.assertIsNone(body["image_url"])
         self.assertIsNone(body["experience_years"])
+        self.assertIsNone(body["founding_year"])
         self.assertIsNone(body["location"])
+
+    def test_create_accepts_founding_year(self):
+        self.log_in_new_user()
+        response = self.client.post(
+            URL,
+            json={"legal_name": "Amb Any SL", "founding_year": 2001},
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(response.json()["founding_year"], 2001)
+
+    def test_database_rejects_non_four_digit_founding_year(self):
+        user_id = self.log_in_new_user()
+        with self.Session() as db:
+            for year in (999, 10_000):
+                with self.subTest(year=year):
+                    db.add(
+                        PromotingEntity(
+                            user_id=user_id,
+                            legal_name="Any invàlid SL",
+                            founding_year=year,
+                        )
+                    )
+                    with self.assertRaises(IntegrityError):
+                        db.commit()
+                    db.rollback()
 
     def test_user_cannot_create_a_second_entity(self):
         self.log_in_new_user()

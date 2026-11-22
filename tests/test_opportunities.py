@@ -1,25 +1,35 @@
 """Create and read investment opportunities through the API."""
+import json
 import unittest
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from uuid import uuid4
 
 from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.orm import sessionmaker
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, get_optional_current_user
+from app.core import media
 from app.database import engine, get_db
 from app.main import app
+from app.models.commitment import Commitment
 from app.models.opportunity import Opportunity, OpportunityStatus
+from app.models.opportunity_image import OpportunityImage
 from app.models.promoting_entity import PromotingEntity
 from app.models.user import User
+from app.models.wallet import Wallet
 
 
 class OpportunitiesTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        cls.media_directory = TemporaryDirectory()
+        cls.previous_media_root = media.MEDIA_ROOT
+        media.MEDIA_ROOT = Path(cls.media_directory.name)
         cls.database = "opportunities_test_" + uuid4().hex
         with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
             connection.execute(text(f'CREATE DATABASE "{cls.database}"'))
@@ -58,73 +68,231 @@ class OpportunitiesTest(unittest.TestCase):
         cls.isolated.dispose()
         with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
             connection.execute(text(f'DROP DATABASE "{cls.database}" WITH (FORCE)'))
+        media.MEDIA_ROOT = cls.previous_media_root
+        cls.media_directory.cleanup()
 
     def opportunity_body(self, **changes):
         body = {
             "type": "real_estate",
             "title": "Investment opportunity",
             "description": "A test opportunity",
-            "location": "Barcelona",
-            "cover_image_url": None,
+            "location": {
+                "municipality": "Barcelona",
+                "province": "Barcelona",
+                "country": "Spain",
+            },
             "target_amount_cents": 25000000,
-            "committed_cents": 10000,
+            "minimum_contribution_cents": 5000,
             "deadline": (datetime.now(UTC) + timedelta(days=30)).isoformat(),
         }
         body.update(changes)
         return body
 
+    def set_wallet_balance(self, available_cents: int) -> None:
+        wallet = self.session.scalar(select(Wallet).where(Wallet.user_id == self.user.id))
+        if wallet is None:
+            self.session.add(Wallet(user_id=self.user.id, available_cents=available_cents))
+        else:
+            wallet.available_cents = available_cents
+            wallet.committed_cents = 0
+        self.session.commit()
+
+    def post_opportunity(self, body: dict, images=None):
+        image_files = images if images is not None else [
+            ("image.png", b"\x89PNG\r\n\x1a\nimage", "image/png"),
+        ]
+        files = [("metadata", (None, json.dumps(body)))]
+        files.extend(("images", image) for image in image_files)
+        return self.client.post("/api/opportunities", files=files)
+
     def test_create_opportunity_requires_authentication(self):
         app.dependency_overrides.pop(get_current_user)
-        response = self.client.post(
-            "/api/opportunities",
-            json=self.opportunity_body(),
-        )
+        response = self.post_opportunity(self.opportunity_body())
         app.dependency_overrides[get_current_user] = lambda: self.user
         self.assertEqual(response.status_code, 401)
 
     def test_create_opportunity_assigns_current_user(self):
-        response = self.client.post(
-            "/api/opportunities",
-            json=self.opportunity_body(),
-        )
+        response = self.post_opportunity(self.opportunity_body())
 
         self.assertEqual(response.status_code, 201)
         body = response.json()
         self.assertEqual(body["user_id"], self.user.id)
-        self.assertEqual(body["committed_cents"], 10000)
+        self.assertEqual(body["committed_cents"], 0)
         self.assertEqual(body["type"], "real_estate")
-        self.assertIsNotNone(body["date_published"])
+        self.assertIsNone(body["date_published"])
         self.assertNotIn("status", body)
+        self.session.expire_all()
+        opportunity = self.session.get(Opportunity, body["id"])
+        self.assertEqual(opportunity.status, OpportunityStatus.DRAFT)
+        self.assertEqual(opportunity.location, "Barcelona, Barcelona, Spain")
+        self.assertEqual(opportunity.minimum_contribution_cents, 5000)
+        self.assertEqual(len(body["images"]), 1)
+        self.assertEqual(body["cover_image_url"], body["images"][0]["url"])
+        image = self.session.scalar(
+            select(OpportunityImage).where(OpportunityImage.opportunity_id == body["id"])
+        )
+        self.assertEqual(image.position, 0)
+        self.assertEqual(image.size_bytes, len(b"\x89PNG\r\n\x1a\nimage"))
+        catalog = self.client.get("/api/opportunities")
+        self.assertNotIn(body["id"], [item["id"] for item in catalog.json()])
 
     def test_create_opportunity_requires_promoting_entity(self):
         user = User(email="no-promoter@example.com", hashed_password="x" * 60)
         self.session.add(user)
         self.session.commit()
         app.dependency_overrides[get_current_user] = lambda: user
-        response = self.client.post(
-            "/api/opportunities",
-            json=self.opportunity_body(),
-        )
+        response = self.post_opportunity(self.opportunity_body())
         app.dependency_overrides[get_current_user] = lambda: self.user
         self.assertEqual(response.status_code, 403)
 
     def test_create_opportunity_rejects_invalid_data(self):
-        response = self.client.post(
-            "/api/opportunities",
-            json=self.opportunity_body(
-                type="invalid",
-                target_amount_cents=0,
-            ),
+        invalid_bodies = (
+            self.opportunity_body(type="invalid"),
+            self.opportunity_body(target_amount_cents=0),
+            self.opportunity_body(minimum_contribution_cents=0),
+            self.opportunity_body(minimum_contribution_cents=25000001),
+            self.opportunity_body(initial_contribution_cents=4999),
+            self.opportunity_body(initial_contribution_cents=25000001),
+            self.opportunity_body(target_amount_cents=5000.0),
+            self.opportunity_body(title=" "),
+            self.opportunity_body(description=" "),
+            self.opportunity_body(location={"municipality": " ", "province": "A", "country": "B"}),
+            self.opportunity_body(location={"municipality": "A", "province": " ", "country": "B"}),
+            self.opportunity_body(location={"municipality": "A", "province": "B", "country": " "}),
+            self.opportunity_body(deadline=(datetime.now(UTC) - timedelta(seconds=1)).isoformat()),
         )
 
-        self.assertEqual(response.status_code, 422)
+        for body in invalid_bodies:
+            with self.subTest(body=body):
+                response = self.post_opportunity(body)
+                self.assertEqual(response.status_code, 422)
 
-    def test_get_opportunity_hides_non_real_estate_opportunities(self):
-        # US02.2.1: el detalle solo muestra oportunidades inmobiliarias.
-        created = self.client.post(
-            "/api/opportunities",
-            json=self.opportunity_body(type="equity"),
+    def test_create_opportunity_validates_images(self):
+        invalid_images = (
+            [],
+            [("text.txt", b"not-an-image", "text/plain")],
+            [
+                (
+                    "large.png",
+                    b"\x89PNG\r\n\x1a\n" + b"x" * (media.MAX_IMAGE_BYTES + 1),
+                    "image/png",
+                )
+            ],
         )
+
+        for images in invalid_images:
+            with self.subTest(images=images):
+                response = self.post_opportunity(self.opportunity_body(), images=images)
+                self.assertEqual(response.status_code, 422)
+
+    def test_database_failure_removes_stored_images(self):
+        class FailingCommitSession:
+            def __init__(self, session):
+                self.session = session
+
+            def commit(self):
+                raise RuntimeError("Database commit failed")
+
+            def __getattr__(self, name):
+                return getattr(self.session, name)
+
+        previous_override = app.dependency_overrides[get_db]
+
+        def override_get_db():
+            yield FailingCommitSession(self.session)
+
+        files_before = {
+            path.relative_to(media.MEDIA_ROOT)
+            for path in media.MEDIA_ROOT.rglob("*")
+            if path.is_file()
+        }
+        app.dependency_overrides[get_db] = override_get_db
+        try:
+            with self.assertRaisesRegex(RuntimeError, "Database commit failed"):
+                self.post_opportunity(self.opportunity_body())
+        finally:
+            app.dependency_overrides[get_db] = previous_override
+
+        files_after = {
+            path.relative_to(media.MEDIA_ROOT)
+            for path in media.MEDIA_ROOT.rglob("*")
+            if path.is_file()
+        }
+        self.assertEqual(files_after, files_before)
+
+    def test_initial_contribution_reserves_funds_with_the_new_opportunity(self):
+        self.set_wallet_balance(10000)
+
+        response = self.post_opportunity(
+            self.opportunity_body(initial_contribution_cents=7500)
+        )
+
+        self.assertEqual(response.status_code, 201)
+        opportunity_id = response.json()["id"]
+        self.session.expire_all()
+        wallet = self.session.scalar(select(Wallet).where(Wallet.user_id == self.user.id))
+        opportunity = self.session.get(Opportunity, opportunity_id)
+        commitment = self.session.scalar(
+            select(Commitment).where(Commitment.opportunity_id == opportunity_id)
+        )
+        self.assertEqual((wallet.available_cents, wallet.committed_cents), (2500, 7500))
+        self.assertEqual(opportunity.committed_cents, 7500)
+        self.assertEqual(opportunity.status, OpportunityStatus.DRAFT)
+        self.assertEqual(commitment.amount_cents, 7500)
+
+    def test_opportunity_images_keep_their_order_and_access_rules(self):
+        response = self.post_opportunity(
+            self.opportunity_body(),
+            images=[
+                ("cover.png", b"\x89PNG\r\n\x1a\ncover", "image/png"),
+                ("gallery.webp", b"RIFF\x00\x00\x00\x00WEBPimage", "image/webp"),
+            ],
+        )
+
+        self.assertEqual(response.status_code, 201)
+        body = response.json()
+        self.assertEqual([image["position"] for image in body["images"]], [0, 1])
+        cover_url = body["cover_image_url"]
+        self.assertEqual(self.client.get(cover_url).status_code, 404)
+
+        app.dependency_overrides[get_optional_current_user] = lambda: self.user
+        owner_response = self.client.get(cover_url)
+        app.dependency_overrides.pop(get_optional_current_user)
+        self.assertEqual(owner_response.status_code, 200)
+        self.assertEqual(owner_response.headers["content-type"], "image/png")
+        self.assertEqual(owner_response.content, b"\x89PNG\r\n\x1a\ncover")
+
+        opportunity = self.session.get(Opportunity, body["id"])
+        opportunity.status = OpportunityStatus.PUBLISHED
+        opportunity.date_published = datetime.now(UTC)
+        self.session.commit()
+        self.assertEqual(self.client.get(cover_url).status_code, 200)
+
+    def test_insufficient_initial_contribution_does_not_create_partial_data(self):
+        self.set_wallet_balance(5000)
+        commitments_before = self.session.scalar(select(func.count()).select_from(Commitment))
+
+        response = self.post_opportunity(
+            self.opportunity_body(
+                title="Rollback opportunity", initial_contribution_cents=7500
+            )
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.session.expire_all()
+        wallet = self.session.scalar(select(Wallet).where(Wallet.user_id == self.user.id))
+        opportunity = self.session.scalar(
+            select(Opportunity).where(Opportunity.title == "Rollback opportunity")
+        )
+        self.assertEqual((wallet.available_cents, wallet.committed_cents), (5000, 0))
+        self.assertIsNone(opportunity)
+        self.assertEqual(
+            self.session.scalar(select(func.count()).select_from(Commitment)),
+            commitments_before,
+        )
+
+    def test_equity_detail_without_business_data_returns_not_found(self):
+        created = self.post_opportunity(self.opportunity_body(type="equity"))
         opportunity_id = created.json()["id"]
 
         response = self.client.get(f"/api/opportunities/{opportunity_id}")

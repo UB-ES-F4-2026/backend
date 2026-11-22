@@ -13,6 +13,7 @@ PUBLIC_ROUTES = {
     ("GET", "/api/health"),
     ("GET", "/api/opportunities"),
     ("GET", "/api/opportunities/{opportunity_id}"),
+    ("GET", "/api/opportunities/{opportunity_id}/images/{image_id}"),
     ("GET", "/api/promotingentity"),
 }
 

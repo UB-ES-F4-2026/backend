@@ -45,7 +45,7 @@ Si la petició no especifica un rol, dedueix-lo i comunica quin apliques. Els ro
 3. Examina primer els mòduls i tests directament relacionats amb la tasca.
 4. Treballa en una branca `task/<n>-<descripció>` per issue.
 5. Mantén els canvis petits i coherents amb l'arquitectura existent.
-6. Afegeix o actualitza tests quan canviï el comportament observable.
+6. Afegeix o actualitza tests quan canviï el comportament observable, i el seed E2E (`seed_e2e_testing_data.py`) quan canviïn les dades que l'aplicació necessita: vegeu [agents/backend.md](agents/backend.md#seed-e2e).
 7. Obre una PR cap a la branca `feat/US…` de la història d'usuari, enllaçant la issue amb `Closes #n`. Les `feat` es fusionen a `dev`, i `dev` a `main` a cada release.
 8. Comprova que la CI passa abans de fusionar.
 
@@ -75,6 +75,7 @@ No afegeixis atribucions automàtiques d'assistents d'IA als commits o PRs.
 - `app/start.py`: migracions i inicialització.
 - `alembic/versions/`: historial de migracions.
 - `tests/`: tests amb `unittest`.
+- `seed_e2e_testing_data.py`: dades de què depenen els E2E de Playwright i el desenvolupament local.
 
 Utilitza SQLAlchemy 2.x amb `select(Model)`, `db.scalars()`, `db.scalar()` i `db.get()`. Evita `db.query()`.
 
@@ -127,7 +128,7 @@ docker compose logs --tail 60 backend db
 ## Seguretat i preservació de dades
 
 - No mostris, modifiquis ni versionis `.env`, secrets, tokens o credencials.
-- Preserva els volums `postgres_data` i `pgadmin_data`.
+- Preserva els volums `postgres_data`, `pgadmin_data` i `media_data`.
 - Utilitza `docker compose down` sense `-v`.
 - No executis `prune`, SQL destructiu ni eliminacions de volums per resoldre errors.
 - Investiga primer els logs i coordina qualsevol operació destructiva amb l'equip.
@@ -142,6 +143,7 @@ Una tasca es considera completada quan:
 - Els tests passen, si l'entorn està disponible.
 - `alembic check` no detecta canvis pendents, si s'han modificat models.
 - Les migracions han estat revisades manualment.
+- El seed E2E crea, amb el codi de la branca, totes les dades que els E2E necessiten.
 - El diff no conté secrets, fitxers generats ni canvis aliens a la tasca.
 
 Tanca cada tasca indicant què has modificat, com ho has verificat (ordres i resultats) i què queda pendent.

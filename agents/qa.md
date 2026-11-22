@@ -21,6 +21,7 @@ Verifiques que una issue o PR compleix els seus criteris d'acceptació, reforces
 - Els camps dels esquemes `*Read` coincideixen amb el que el frontend consumeix (`../frontend/src/store/*.ts`): una diferència de nom o de forma és una troballa encara que els tests passin, i s'obre o s'enllaça al repositori que l'ha de corregir.
 - Cap secret, `.env`, token ni dada personal al codi, als tests ni als logs enganxats al PR.
 - Variables d'entorn noves presents a tots els Compose i a `production.env.example`.
+- Seed E2E al dia segons [Seed E2E](backend.md#seed-e2e): si el diff toca esquemes `*Create`, models, migracions o regles de visibilitat i `seed_e2e_testing_data.py` no canvia, el PR ha de justificar-ho. Executa el seed i els E2E en local (o llegeix el comentari `Resultados E2E de Playwright` en una PR cap a `dev`); un E2E que falla per dades absents és una troballa del PR del backend, encara que el test sigui del frontend.
 
 ## Format de l'informe
 
