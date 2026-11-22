@@ -64,6 +64,44 @@ class OpportunityLocationCreate(BaseModel):
         return f"{self.municipality}, {self.province}, {self.country}"
 
 
+class RealEstateOpportunityCreate(BaseModel):
+    """Dades específiques per crear una oportunitat immobiliària."""
+
+    purpose: RealEstatePurpose
+    intended_use: IntendedUse
+    asset_type: AssetType
+    surface_m2: Annotated[Decimal, Field(gt=0, max_digits=10, decimal_places=2)]
+    planned_housing_units: Annotated[StrictInt, Field(gt=0)] | None = None
+    estimated_works_end: date | None = None
+    estimated_rental_start: date | None = None
+    public_latitude: Annotated[Decimal, Field(ge=-90, le=90)] | None = None
+    public_longitude: Annotated[Decimal, Field(ge=-180, le=180)] | None = None
+
+    @model_validator(mode="after")
+    def validate_conditional_fields(self) -> "RealEstateOpportunityCreate":
+        requires_housing_units = self.asset_type in {
+            AssetType.RESIDENTIAL,
+            AssetType.MIXED,
+        }
+        if requires_housing_units != (self.planned_housing_units is not None):
+            raise ValueError(
+                "Planned housing units must match the selected asset type"
+            )
+        if (
+            self.estimated_works_end is not None
+            and self.purpose == RealEstatePurpose.ACQUISITION
+        ):
+            raise ValueError("Estimated works end requires works")
+        if (
+            self.estimated_rental_start is not None
+            and self.intended_use != IntendedUse.RENTAL
+        ):
+            raise ValueError("Estimated rental start requires rental use")
+        if (self.public_latitude is None) != (self.public_longitude is None):
+            raise ValueError("Public coordinates must be provided together")
+        return self
+
+
 class OpportunityCreate(BaseModel):
     type: OpportunityType
     title: str = Field(min_length=1, max_length=255)
@@ -73,6 +111,7 @@ class OpportunityCreate(BaseModel):
     minimum_contribution_cents: Annotated[StrictInt, Field(gt=0)]
     deadline: datetime
     initial_contribution_cents: Annotated[StrictInt, Field(gt=0)] | None = None
+    real_estate: RealEstateOpportunityCreate | None = None
 
     @field_validator("title", "description")
     @classmethod
@@ -99,6 +138,14 @@ class OpportunityCreate(BaseModel):
             <= self.target_amount_cents
         ):
             raise ValueError("Initial contribution must be within the funding range")
+        return self
+
+    @model_validator(mode="after")
+    def validate_type_specific_data(self) -> "OpportunityCreate":
+        if self.type == OpportunityType.REAL_ESTATE and self.real_estate is None:
+            raise ValueError("Real estate data is required")
+        if self.type != OpportunityType.REAL_ESTATE and self.real_estate is not None:
+            raise ValueError("Real estate data requires a real estate opportunity")
         return self
 
 
