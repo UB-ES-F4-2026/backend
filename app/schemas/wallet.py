@@ -45,6 +45,15 @@ class BalanceRead(BaseModel):
     currency: Literal["eur"] = "eur"
 
 
+class DepositIntentCreate(BaseModel):
+    amount_cents: Annotated[StrictInt, Field(ge=50, le=MAX_SAFE_CENTS)]
+
+
+class DepositIntentResponse(BaseModel):
+    client_secret: str
+    payment_intent_id: str
+
+
 class WithdrawalRequest(BaseModel):
     amount_cents: Annotated[StrictInt, Field(ge=50, le=MAX_SAFE_CENTS)]
     iban: Annotated[str, Field(min_length=15, max_length=34)]
