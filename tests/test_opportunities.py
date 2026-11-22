@@ -1,7 +1,8 @@
 """Create and read investment opportunities through the API."""
 import json
 import unittest
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from uuid import uuid4
@@ -20,6 +21,11 @@ from app.models.commitment import Commitment
 from app.models.opportunity import Opportunity, OpportunityStatus
 from app.models.opportunity_image import OpportunityImage
 from app.models.promoting_entity import PromotingEntity
+from app.models.real_estate_opportunity import (
+    AssetType,
+    IntendedUse,
+    RealEstatePurpose,
+)
 from app.models.user import User
 from app.models.wallet import Wallet
 
@@ -84,6 +90,17 @@ class OpportunitiesTest(unittest.TestCase):
             "target_amount_cents": 25000000,
             "minimum_contribution_cents": 5000,
             "deadline": (datetime.now(UTC) + timedelta(days=30)).isoformat(),
+            "real_estate": {
+                "purpose": "acquisition_and_renovation",
+                "intended_use": "rental",
+                "asset_type": "residential",
+                "surface_m2": "250.50",
+                "planned_housing_units": 4,
+                "estimated_works_end": "2027-01-15",
+                "estimated_rental_start": "2027-03-01",
+                "public_latitude": "41.387000",
+                "public_longitude": "2.170000",
+            },
         }
         body.update(changes)
         return body
@@ -126,6 +143,19 @@ class OpportunitiesTest(unittest.TestCase):
         self.assertEqual(opportunity.status, OpportunityStatus.DRAFT)
         self.assertEqual(opportunity.location, "Barcelona, Barcelona, Spain")
         self.assertEqual(opportunity.minimum_contribution_cents, 5000)
+        real_estate = opportunity.real_estate
+        self.assertEqual(
+            real_estate.purpose,
+            RealEstatePurpose.ACQUISITION_AND_RENOVATION,
+        )
+        self.assertEqual(real_estate.intended_use, IntendedUse.RENTAL)
+        self.assertEqual(real_estate.asset_type, AssetType.RESIDENTIAL)
+        self.assertEqual(real_estate.surface_m2, Decimal("250.50"))
+        self.assertEqual(real_estate.planned_housing_units, 4)
+        self.assertEqual(real_estate.estimated_works_end, date(2027, 1, 15))
+        self.assertEqual(real_estate.estimated_rental_start, date(2027, 3, 1))
+        self.assertEqual(real_estate.public_latitude, Decimal("41.387000"))
+        self.assertEqual(real_estate.public_longitude, Decimal("2.170000"))
         self.assertEqual(len(body["images"]), 1)
         self.assertEqual(body["cover_image_url"], body["images"][0]["url"])
         image = self.session.scalar(
@@ -184,6 +214,74 @@ class OpportunitiesTest(unittest.TestCase):
             with self.subTest(images=images):
                 response = self.post_opportunity(self.opportunity_body(), images=images)
                 self.assertEqual(response.status_code, 422)
+
+    def test_create_opportunity_validates_real_estate_data(self):
+        invalid_real_estate = (
+            None,
+            {**self.opportunity_body()["real_estate"], "surface_m2": "0"},
+            {
+                **self.opportunity_body()["real_estate"],
+                "planned_housing_units": None,
+            },
+            {
+                **self.opportunity_body()["real_estate"],
+                "asset_type": "commercial",
+            },
+            {
+                **self.opportunity_body()["real_estate"],
+                "purpose": "acquisition",
+            },
+            {
+                **self.opportunity_body()["real_estate"],
+                "intended_use": "sale",
+            },
+            {
+                **self.opportunity_body()["real_estate"],
+                "public_longitude": None,
+            },
+            {
+                **self.opportunity_body()["real_estate"],
+                "public_latitude": "91",
+            },
+        )
+
+        for real_estate in invalid_real_estate:
+            with self.subTest(real_estate=real_estate):
+                response = self.post_opportunity(
+                    self.opportunity_body(real_estate=real_estate)
+                )
+                self.assertEqual(response.status_code, 422)
+
+    def test_create_opportunity_accepts_valid_real_estate_variants(self):
+        base_real_estate = self.opportunity_body()["real_estate"]
+        valid_real_estate = (
+            {
+                **base_real_estate,
+                "asset_type": "mixed",
+                "planned_housing_units": 2,
+            },
+            {
+                **base_real_estate,
+                "purpose": "acquisition",
+                "intended_use": "sale",
+                "asset_type": "commercial",
+                "planned_housing_units": None,
+                "estimated_works_end": None,
+                "estimated_rental_start": None,
+                "public_latitude": None,
+                "public_longitude": None,
+            },
+        )
+
+        for index, real_estate in enumerate(valid_real_estate):
+            with self.subTest(real_estate=real_estate):
+                response = self.post_opportunity(
+                    self.opportunity_body(
+                        title=f"Valid real estate opportunity {index}",
+                        real_estate=real_estate,
+                    )
+                )
+                self.assertEqual(response.status_code, 201)
 
     def test_database_failure_removes_stored_images(self):
         class FailingCommitSession:
@@ -292,7 +390,10 @@ class OpportunitiesTest(unittest.TestCase):
         )
 
     def test_equity_detail_without_business_data_returns_not_found(self):
-        created = self.post_opportunity(self.opportunity_body(type="equity"))
+        created = self.post_opportunity(
+            self.opportunity_body(type="equity", real_estate=None)
+        )
+        self.assertEqual(created.status_code, 201)
         opportunity_id = created.json()["id"]
 
         response = self.client.get(f"/api/opportunities/{opportunity_id}")
