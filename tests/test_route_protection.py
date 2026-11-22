@@ -10,6 +10,8 @@ from app.main import app
 PUBLIC_ROUTES = {
     ("POST", "/api/auth/register"),
     ("POST", "/api/auth/login"),
+    # Stripe no porta la cookie de sessió de l'usuari; el webhook en valida la signatura.
+    ("POST", "/api/webhooks/stripe"),
     ("GET", "/api/health"),
     ("GET", "/api/opportunities"),
     ("GET", "/api/opportunities/{opportunity_id}"),

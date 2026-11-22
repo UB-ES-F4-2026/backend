@@ -431,12 +431,13 @@ def get_database_connection():
         raise RuntimeError(f"POSTGRES_PORT fuera de rango (1-65535): {db_port}")
 
     return pg.connect(
-        host="127.0.0.1",  # Compose publica PostgreSQL únicamente en localhost
+        host=env.get("POSTGRES_HOST", "127.0.0.1"),  # Compose publica PostgreSQL únicamente en localhost
         port=db_port,
         dbname=env["POSTGRES_DB"],
         user=env["POSTGRES_USER"],
         password=env["POSTGRES_PASSWORD"],
     )
+
 
 
 def inject_sql_only_data() -> None:
