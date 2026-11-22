@@ -1,5 +1,6 @@
 """Read investment opportunities."""
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
@@ -25,8 +26,10 @@ from app.models.opportunity import Opportunity, OpportunityStatus, OpportunityTy
 from app.models.opportunity_image import OpportunityImage
 from app.models.promoting_entity import PromotingEntity
 from app.schemas.opportunity import (
+    BusinessOpportunityDetailRead,
+    BusinessOpportunityRead,
     OpportunityCreate,
-    OpportunityDetailRead,
+    RealEstateOpportunityDetailRead,
     OpportunityRead,
     RealEstateOpportunityRead,
 )
@@ -145,17 +148,18 @@ def get_opportunities(
         .where(available_opportunity_filter())
         .order_by(Opportunity.created_at.desc())
     ).all()
-    # Sin búsqueda (o solo espacios) se devuelve el catálogo completo.
     if name is None or not name.strip():
         return list(opportunities)
-    # Solo se busca dentro del catálogo disponible.
     return search_by_title(name, opportunities, lambda opportunity: opportunity.title)
 
 
-@router.get("/{opportunity_id}", response_model=OpportunityDetailRead)
-def get_opportunity(opportunity_id: int, db: DbSession) -> OpportunityDetailRead:
-    # Solo es pública una oportunidad inmobiliaria publicada o cerrada con sus
-    # datos de inmueble. Los JOIN internos descartan las que no tienen inmueble.
+@router.get(
+    "/{opportunity_id}",
+    response_model=RealEstateOpportunityDetailRead | BusinessOpportunityDetailRead,
+)
+def get_opportunity(
+    opportunity_id: int, db: DbSession
+) -> RealEstateOpportunityDetailRead | BusinessOpportunityDetailRead:
     row = db.execute(
         select(Opportunity, published_projects_count)
         .join(Opportunity.real_estate)
@@ -169,15 +173,79 @@ def get_opportunity(opportunity_id: int, db: DbSession) -> OpportunityDetailRead
             Opportunity.status.in_([OpportunityStatus.PUBLISHED, OpportunityStatus.CLOSED]),
         )
     ).one_or_none()
-    if row is None:
-        # Misma respuesta para inexistentes, borradores, rechazadas y otros tipos:
-        # no se revela cuál de estos casos es.
+    if row is not None:
+        opportunity, count = row
+        return RealEstateOpportunityDetailRead(
+            id=opportunity.id,
+            type=opportunity.type,
+            status=opportunity.status,
+            title=opportunity.title,
+            description=opportunity.description,
+            location=opportunity.location,
+            cover_image_url=opportunity.cover_image_url,
+            images=opportunity.images,
+            target_amount_cents=opportunity.target_amount_cents,
+            committed_cents=opportunity.committed_cents,
+            minimum_contribution_cents=opportunity.minimum_contribution_cents,
+            deadline=opportunity.deadline,
+            date_published=opportunity.date_published,
+            promoter=to_read(opportunity.promoter, count),
+            real_estate=RealEstateOpportunityRead.model_validate(
+                opportunity.real_estate
+            ),
+            server_time=datetime.now(UTC),
+        )
+
+    equity_opportunity_id = db.scalar(
+        select(Opportunity.id).where(
+            Opportunity.id == opportunity_id,
+            Opportunity.type == OpportunityType.EQUITY,
+            Opportunity.status.in_(
+                [OpportunityStatus.PUBLISHED, OpportunityStatus.CLOSED]
+            ),
+        )
+    )
+    if equity_opportunity_id is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Oportunidad no disponible",
         )
+
+    row = db.execute(
+        select(Opportunity, published_projects_count)
+        .join(Opportunity.business)
+        .join(Opportunity.promoter)
+        .options(
+            contains_eager(Opportunity.business),
+            contains_eager(Opportunity.promoter),
+        )
+        .where(
+            Opportunity.id == opportunity_id,
+            Opportunity.type == OpportunityType.EQUITY,
+            Opportunity.status.in_(
+                [OpportunityStatus.PUBLISHED, OpportunityStatus.CLOSED]
+            ),
+        )
+    ).one_or_none()
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Oportunidad no disponible",
+        )
+
     opportunity, count = row
-    return OpportunityDetailRead(
+    business = opportunity.business
+    if business is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Oportunidad no disponible",
+        )
+    target_amount = Decimal(opportunity.target_amount_cents)
+    pre_investment_valuation = Decimal(business.pre_investment_valuation_cents)
+    equity_offered = target_amount / (
+        pre_investment_valuation + target_amount
+    ) * Decimal(100)
+    return BusinessOpportunityDetailRead(
         id=opportunity.id,
         type=opportunity.type,
         status=opportunity.status,
@@ -189,9 +257,14 @@ def get_opportunity(opportunity_id: int, db: DbSession) -> OpportunityDetailRead
         target_amount_cents=opportunity.target_amount_cents,
         committed_cents=opportunity.committed_cents,
         minimum_contribution_cents=opportunity.minimum_contribution_cents,
-        deadline=opportunity.deadline,
         date_published=opportunity.date_published,
+        deadline=opportunity.deadline,
         promoter=to_read(opportunity.promoter, count),
-        real_estate=RealEstateOpportunityRead.model_validate(opportunity.real_estate),
+        business=BusinessOpportunityRead(
+            sector=business.sector,
+            phase=business.phase,
+            pre_investment_valuation_cents=business.pre_investment_valuation_cents,
+            equity_offered=equity_offered,
+        ),
         server_time=datetime.now(UTC),
     )

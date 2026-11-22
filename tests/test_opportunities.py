@@ -255,8 +255,7 @@ class OpportunitiesTest(unittest.TestCase):
             commitments_before,
         )
 
-    def test_get_opportunity_hides_non_real_estate_opportunities(self):
-        # US02.2.1: el detalle solo muestra oportunidades inmobiliarias.
+    def test_equity_detail_without_business_data_returns_not_found(self):
         created = self.post_opportunity(self.opportunity_body(type="equity"))
         opportunity_id = created.json()["id"]
 

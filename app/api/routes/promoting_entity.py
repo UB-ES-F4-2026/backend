@@ -30,6 +30,7 @@ def to_read(entity: PromotingEntity, count: int) -> PromotingEntityRead:
         image_url=entity.image_url,
         published_projects_count=count,
         experience_years=entity.experience_years,
+        founding_year=entity.founding_year,
         location=entity.location,
     )
 

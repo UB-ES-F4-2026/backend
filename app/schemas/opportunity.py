@@ -6,6 +6,7 @@ from typing import Annotated
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
 
 from app.models.opportunity import OpportunityStatus, OpportunityType
+from app.models.business_opportunity import BusinessPhase, BusinessSector
 from app.models.real_estate_opportunity import AssetType, IntendedUse, RealEstatePurpose
 from app.schemas.promoting_entity import PromotingEntityRead
 
@@ -117,7 +118,7 @@ class RealEstateOpportunityRead(BaseModel):
     public_longitude: Decimal | None
 
 
-class OpportunityDetailRead(BaseModel):
+class RealEstateOpportunityDetailRead(BaseModel):
     """Detalle público de una oportunidad inmobiliaria (US02.2.1).
 
     Solo incluye los datos que muestra el detalle: no expone fechas internas
@@ -143,7 +144,42 @@ class OpportunityDetailRead(BaseModel):
     server_time: datetime
 
     @model_validator(mode="after")
-    def set_cover_image_from_gallery(self) -> "OpportunityDetailRead":
+    def set_cover_image_from_gallery(self) -> "RealEstateOpportunityDetailRead":
+        if self.images:
+            self.cover_image_url = self.images[0].url
+        return self
+
+class BusinessOpportunityRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    sector: BusinessSector
+    phase: BusinessPhase
+    pre_investment_valuation_cents: int
+    equity_offered: Decimal
+
+
+class BusinessOpportunityDetailRead(BaseModel):
+    """Detall d'una oportunitat empresarial accessible sense sessió requerida."""
+
+    id: int
+    type: OpportunityType
+    status: OpportunityStatus
+    title: str
+    description: str
+    location: str
+    cover_image_url: str | None
+    images: list[OpportunityImageRead] = Field(default_factory=list)
+    target_amount_cents: int
+    committed_cents: int
+    minimum_contribution_cents: int | None
+    date_published: datetime
+    deadline: datetime
+    promoter: PromotingEntityRead
+    business: BusinessOpportunityRead
+    server_time: datetime
+
+    @model_validator(mode="after")
+    def set_cover_image_from_gallery(self) -> "BusinessOpportunityDetailRead":
         if self.images:
             self.cover_image_url = self.images[0].url
         return self

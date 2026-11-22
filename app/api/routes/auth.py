@@ -12,6 +12,7 @@ from app.core.security import (
     hash_session_token,
     verify_password,
 )
+from app.models.promoting_entity import PromotingEntity
 from app.models.session import UserSession
 from app.models.user import User
 from app.models.wallet import Wallet
@@ -22,18 +23,34 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
 def register(body: RegisterRequest, db: DbSession) -> User:
-    user = User(email=body.email,
-                first_name=body.first_name,
-                last_name=body.last_name,
-                phone=body.phone,
-                hashed_password=hash_password(body.password),
-                wallet = Wallet())
+    user = User(
+        email=body.email,
+        first_name=body.first_name,
+        last_name=body.last_name,
+        phone=body.phone,
+        hashed_password=hash_password(body.password),
+        wallet=Wallet(),
+    )
     db.add(user)
     try:
+        db.flush()
+        if body.promoting_entity is not None:
+            db.add(
+                PromotingEntity(
+                    user=user,
+                    **body.promoting_entity.model_dump(),
+                )
+            )
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status.HTTP_409_CONFLICT, "Email already registered") from None
+        if db.scalar(select(User.id).where(User.email == body.email)) is not None:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT, "Email already registered"
+            ) from None
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Registration conflict"
+        ) from None
     db.refresh(user)
     return user
 
