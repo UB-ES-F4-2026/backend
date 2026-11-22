@@ -323,8 +323,8 @@ real_estate_details = {
 
 business_details = {
     "Ronda Seed - EcoLogistics SL": {
-        "sector": "logistic",
-        "phase": "seed",
+        "sector": "other_services",
+        "phase": "launch",
         "pre_investment_valuation_cents": 360000000,
     },
     "Ampliación de Capital - HealthAI Solutions": {
@@ -371,25 +371,6 @@ INSERT_REAL_ESTATE_SQL = """
         public_longitude = EXCLUDED.public_longitude
     RETURNING opportunity_id
 """
-
-INSERT_BUSINESS_SQL = """
-    INSERT INTO public.business_opportunities (
-        opportunity_id, sector, phase, pre_investment_valuation_cents
-    )
-    SELECT
-        o.id,
-        %(sector)s::business_sector,
-        %(phase)s::business_phase,
-        %(pre_investment_valuation_cents)s::integer
-    FROM public.opportunities o
-    WHERE o.title = %(title)s AND o.type = 'equity'
-    ON CONFLICT (opportunity_id) DO UPDATE SET
-        sector = EXCLUDED.sector,
-        phase = EXCLUDED.phase,
-        pre_investment_valuation_cents = EXCLUDED.pre_investment_valuation_cents
-    RETURNING opportunity_id
-"""
-
 
 def load_env() -> dict[str, str]:
     """Lee el .env del backend; las variables de entorno tienen prioridad."""
@@ -459,7 +440,7 @@ def get_database_connection():
 
 
 def inject_sql_only_data() -> None:
-    """Actualiza aportaciones mínimas y metadatos inmobiliarios/empresariales.
+    """Actualiza aportaciones mínimas y metadatos inmobiliarios.
 
     Todas las operaciones SQL se ejecutan en una única transacción. Los
     metadatos especializados utilizan UPSERT, por lo que repetir el seed
@@ -497,15 +478,6 @@ def inject_sql_only_data() -> None:
                         f"'{title}'. Comprueba que se haya creado mediante la API."
                     )
                 print(f"✅ Datos inmobiliarios insertados/actualizados: {title}")
-
-            for title, details in business_details.items():
-                cursor.execute(INSERT_BUSINESS_SQL, {"title": title, **details})
-                if cursor.fetchone() is None:
-                    raise RuntimeError(
-                        "No se encontraron los datos de la oportunidad de equity "
-                        f"'{title}'. Comprueba que se haya creado mediante la API."
-                    )
-                print(f"✅ Datos empresariales insertados/actualizados: {title}")
 
         connection.commit()
     except Exception:
@@ -583,6 +555,8 @@ def seed_database(backend_url: str) -> None:
             payload["location"] = opportunity_location(opportunity["location"])
             if opportunity["type"] == "real_estate":
                 payload["real_estate"] = real_estate_details[opportunity["title"]]
+            if opportunity["type"] == "equity":
+                payload["business"] = business_details[opportunity["title"]]
             response = client.post(
                 OPPORTUNITIES_URL.format(API_BASE_URL=backend_url),
                 data={"metadata": json.dumps(payload)},
@@ -605,7 +579,7 @@ def seed_database(backend_url: str) -> None:
                 response.raise_for_status()
 
     # Se ejecuta después de que la API haya creado (o confirmado) todas las
-    # oportunidades; los datos especializados quedan en una sola transacción.
+    # oportunidades para completar los datos que aún no forman parte del contrato.
     inject_sql_only_data()
 
 
