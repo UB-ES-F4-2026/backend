@@ -102,6 +102,14 @@ class RealEstateOpportunityCreate(BaseModel):
         return self
 
 
+class BusinessOpportunityCreate(BaseModel):
+    """Dades específiques per crear una oportunitat empresarial."""
+
+    sector: BusinessSector
+    phase: BusinessPhase
+    pre_investment_valuation_cents: Annotated[StrictInt, Field(gt=0)]
+
+
 class OpportunityCreate(BaseModel):
     type: OpportunityType
     title: str = Field(min_length=1, max_length=255)
@@ -112,6 +120,7 @@ class OpportunityCreate(BaseModel):
     deadline: datetime
     initial_contribution_cents: Annotated[StrictInt, Field(gt=0)] | None = None
     real_estate: RealEstateOpportunityCreate | None = None
+    business: BusinessOpportunityCreate | None = None
 
     @field_validator("title", "description")
     @classmethod
@@ -146,6 +155,10 @@ class OpportunityCreate(BaseModel):
             raise ValueError("Real estate data is required")
         if self.type != OpportunityType.REAL_ESTATE and self.real_estate is not None:
             raise ValueError("Real estate data requires a real estate opportunity")
+        if self.type == OpportunityType.EQUITY and self.business is None:
+            raise ValueError("Business data is required")
+        if self.type != OpportunityType.EQUITY and self.business is not None:
+            raise ValueError("Business data requires an equity opportunity")
         return self
 
 

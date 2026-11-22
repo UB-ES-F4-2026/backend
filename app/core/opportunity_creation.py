@@ -12,6 +12,7 @@ from app.core.media import (
 )
 from app.models.opportunity import Opportunity, OpportunityStatus
 from app.models.opportunity_image import OpportunityImage
+from app.models.business_opportunity import BusinessOpportunity
 from app.models.real_estate_opportunity import RealEstateOpportunity
 from app.schemas.opportunity import OpportunityCreate
 
@@ -44,6 +45,8 @@ def create_pending_opportunity(
         opportunity.real_estate = RealEstateOpportunity(
             **body.real_estate.model_dump()
         )
+    if body.business is not None:
+        opportunity.business = BusinessOpportunity(**body.business.model_dump())
 
     if body.initial_contribution_cents is not None:
         reserve_funds(
