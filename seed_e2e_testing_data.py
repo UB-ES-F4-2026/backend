@@ -10,6 +10,7 @@ promotora o una oportunidad ya existan, y actualiza los metadatos SQL para
 que el resultado quede alineado con los datos definidos aquí.
 """
 
+import json
 import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -27,6 +28,7 @@ REGISTER_URL = "{API_BASE_URL}/api/auth/register"
 LOGIN_URL = "{API_BASE_URL}/api/auth/login"
 SEED_EMAIL = "inyector@fintech.com"
 SEED_PASSWORD = "inyector-fintech-2026"
+SEED_IMAGE = b"\x89PNG\r\n\x1a\nseed-image"
 
 
 def deadline_in(days: int) -> str:
@@ -37,6 +39,16 @@ def deadline_in(days: int) -> str:
 def date_in(days: int) -> str:
     """Devuelve una fecha futura relativa al día de ejecución del seed."""
     return (datetime.now(UTC).date() + timedelta(days=days)).isoformat()
+
+
+def opportunity_location(location: str) -> dict[str, str]:
+    """Converteix la localització històrica del seed al contracte de l'API."""
+    municipality, province = (component.strip() for component in location.split(",", 1))
+    return {
+        "municipality": municipality,
+        "province": province,
+        "country": "Espanya",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -537,7 +549,6 @@ def seed_database(backend_url: str) -> None:
             raise RuntimeError("El login no devolvió la cookie de sesión")
 
         headers = {
-            "Content-Type": "application/json",
             "Cookie": f"session={session_token}",
         }
 
@@ -567,11 +578,13 @@ def seed_database(backend_url: str) -> None:
             payload = {
                 key: value
                 for key, value in opportunity.items()
-                if key != "minimum_contribution_cents"
+                if key not in {"committed_cents", "cover_image_url"}
             }
+            payload["location"] = opportunity_location(opportunity["location"])
             response = client.post(
                 OPPORTUNITIES_URL.format(API_BASE_URL=backend_url),
-                json=payload,
+                data={"metadata": json.dumps(payload)},
+                files={"images": ("seed.png", SEED_IMAGE, "image/png")},
                 headers=headers,
             )
 

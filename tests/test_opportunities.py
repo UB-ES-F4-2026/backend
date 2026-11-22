@@ -132,6 +132,7 @@ class OpportunitiesTest(unittest.TestCase):
             select(OpportunityImage).where(OpportunityImage.opportunity_id == body["id"])
         )
         self.assertEqual(image.position, 0)
+        self.assertEqual(image.size_bytes, len(b"\x89PNG\r\n\x1a\nimage"))
         catalog = self.client.get("/api/opportunities")
         self.assertNotIn(body["id"], [item["id"] for item in catalog.json()])
 
@@ -183,6 +184,41 @@ class OpportunitiesTest(unittest.TestCase):
             with self.subTest(images=images):
                 response = self.post_opportunity(self.opportunity_body(), images=images)
                 self.assertEqual(response.status_code, 422)
+
+    def test_database_failure_removes_stored_images(self):
+        class FailingCommitSession:
+            def __init__(self, session):
+                self.session = session
+
+            def commit(self):
+                raise RuntimeError("Database commit failed")
+
+            def __getattr__(self, name):
+                return getattr(self.session, name)
+
+        previous_override = app.dependency_overrides[get_db]
+
+        def override_get_db():
+            yield FailingCommitSession(self.session)
+
+        files_before = {
+            path.relative_to(media.MEDIA_ROOT)
+            for path in media.MEDIA_ROOT.rglob("*")
+            if path.is_file()
+        }
+        app.dependency_overrides[get_db] = override_get_db
+        try:
+            with self.assertRaisesRegex(RuntimeError, "Database commit failed"):
+                self.post_opportunity(self.opportunity_body())
+        finally:
+            app.dependency_overrides[get_db] = previous_override
+
+        files_after = {
+            path.relative_to(media.MEDIA_ROOT)
+            for path in media.MEDIA_ROOT.rglob("*")
+            if path.is_file()
+        }
+        self.assertEqual(files_after, files_before)
 
     def test_initial_contribution_reserves_funds_with_the_new_opportunity(self):
         self.set_wallet_balance(10000)

@@ -20,6 +20,7 @@ class OpportunityImage(Base):
     __tablename__ = "opportunity_images"
     __table_args__ = (
         CheckConstraint("position >= 0", name="position_non_negative"),
+        CheckConstraint("size_bytes >= 0", name="size_non_negative"),
         UniqueConstraint("opportunity_id", "position", name="opportunity_position"),
     )
 
@@ -29,6 +30,7 @@ class OpportunityImage(Base):
     )
     storage_key: Mapped[str] = mapped_column(String(512), unique=True)
     content_type: Mapped[str] = mapped_column(String(32))
+    size_bytes: Mapped[int] = mapped_column(Integer)
     position: Mapped[int] = mapped_column(Integer)
 
     opportunity: Mapped["Opportunity"] = relationship(back_populates="images")

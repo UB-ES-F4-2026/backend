@@ -22,6 +22,7 @@ class StagedImage:
     temporary_path: Path
     content_type: str
     extension: str
+    size_bytes: int
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,7 @@ class StoredImage:
 
     storage_key: str
     content_type: str
+    size_bytes: int
 
 
 async def stage_images(images: Iterable[UploadFile]) -> list[StagedImage]:
@@ -71,6 +73,7 @@ async def stage_image(image: UploadFile) -> StagedImage:
             temporary_path=temporary_path,
             content_type=content_type,
             extension=extension,
+            size_bytes=size,
         )
     except Exception:
         temporary_path.unlink(missing_ok=True)
@@ -106,6 +109,7 @@ def persist_staged_images(
                 StoredImage(
                     storage_key=str(destination.relative_to(MEDIA_ROOT)),
                     content_type=staged_image.content_type,
+                    size_bytes=staged_image.size_bytes,
                 )
             )
     except Exception:

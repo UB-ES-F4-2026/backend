@@ -54,6 +54,7 @@ def create_pending_opportunity(
             OpportunityImage(
                 storage_key=stored_image.storage_key,
                 content_type=stored_image.content_type,
+                size_bytes=stored_image.size_bytes,
                 position=position,
             )
             for position, stored_image in enumerate(stored_images)

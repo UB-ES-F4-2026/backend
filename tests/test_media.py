@@ -41,6 +41,10 @@ class MediaTest(unittest.IsolatedAsyncioTestCase):
             [(image.content_type, image.extension) for image in staged_images],
             [("image/jpeg", "jpg"), ("image/png", "png"), ("image/webp", "webp")],
         )
+        self.assertEqual(
+            [image.size_bytes for image in staged_images],
+            [9, 13, 17],
+        )
         self.assertTrue(all(image.temporary_path.is_file() for image in staged_images))
 
     async def test_stage_images_rejects_empty_or_invalid_files(self) -> None:
@@ -73,6 +77,7 @@ class MediaTest(unittest.IsolatedAsyncioTestCase):
         stored_images = media.persist_staged_images(staged_images, opportunity_id=15)
 
         self.assertEqual(stored_images[0].content_type, "image/png")
+        self.assertEqual(stored_images[0].size_bytes, 13)
         self.assertTrue(stored_images[0].storage_key.startswith("opportunities/15/"))
         self.assertTrue((media.MEDIA_ROOT / stored_images[0].storage_key).is_file())
         self.assertFalse(staged_images[0].temporary_path.exists())
