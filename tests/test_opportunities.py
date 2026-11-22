@@ -17,6 +17,7 @@ from app.api.deps import get_current_user, get_optional_current_user
 from app.core import media
 from app.database import engine, get_db
 from app.main import app
+from app.models.business_opportunity import BusinessPhase, BusinessSector
 from app.models.commitment import Commitment
 from app.models.opportunity import Opportunity, OpportunityStatus
 from app.models.opportunity_image import OpportunityImage
@@ -114,6 +115,16 @@ class OpportunitiesTest(unittest.TestCase):
             wallet.committed_cents = 0
         self.session.commit()
 
+    def business_opportunity_body(self, **changes):
+        body = self.opportunity_body(type="equity", real_estate=None)
+        body["business"] = {
+            "sector": "technology",
+            "phase": "growth",
+            "pre_investment_valuation_cents": 135000000,
+        }
+        body.update(changes)
+        return body
+
     def post_opportunity(self, body: dict, images=None):
         image_files = images if images is not None else [
             ("image.png", b"\x89PNG\r\n\x1a\nimage", "image/png"),
@@ -174,6 +185,24 @@ class OpportunitiesTest(unittest.TestCase):
         response = self.post_opportunity(self.opportunity_body())
         app.dependency_overrides[get_current_user] = lambda: self.user
         self.assertEqual(response.status_code, 403)
+
+    def test_create_business_opportunity_persists_business_data(self):
+        response = self.post_opportunity(self.business_opportunity_body())
+
+        self.assertEqual(response.status_code, 201)
+        opportunity_id = response.json()["id"]
+        self.session.expire_all()
+        opportunity = self.session.get(Opportunity, opportunity_id)
+        self.assertEqual(opportunity.status, OpportunityStatus.DRAFT)
+        self.assertIsNone(opportunity.date_published)
+        self.assertEqual(opportunity.business.sector, BusinessSector.TECHNOLOGY)
+        self.assertEqual(opportunity.business.phase, BusinessPhase.GROWTH)
+        self.assertEqual(
+            opportunity.business.pre_investment_valuation_cents,
+            135000000,
+        )
+        catalog = self.client.get("/api/opportunities")
+        self.assertNotIn(opportunity_id, [item["id"] for item in catalog.json()])
 
     def test_create_opportunity_rejects_invalid_data(self):
         invalid_bodies = (
@@ -251,6 +280,65 @@ class OpportunitiesTest(unittest.TestCase):
                     self.opportunity_body(real_estate=real_estate)
                 )
                 self.assertEqual(response.status_code, 422)
+
+    def test_create_opportunity_validates_business_data(self):
+        invalid_business = (
+            None,
+            {
+                **self.business_opportunity_body()["business"],
+                "pre_investment_valuation_cents": 0,
+            },
+            {
+                **self.business_opportunity_body()["business"],
+                "pre_investment_valuation_cents": 1.5,
+            },
+            {**self.business_opportunity_body()["business"], "sector": "invalid"},
+            {**self.business_opportunity_body()["business"], "phase": "invalid"},
+        )
+
+        for business in invalid_business:
+            with self.subTest(business=business):
+                response = self.post_opportunity(
+                    self.business_opportunity_body(business=business)
+                )
+                self.assertEqual(response.status_code, 422)
+
+        response = self.post_opportunity(
+            self.opportunity_body(
+                business=self.business_opportunity_body()["business"]
+            )
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_create_business_opportunity_accepts_trello_sectors_and_phases(self):
+        sectors = [sector.value for sector in BusinessSector]
+        phases = [phase.value for phase in BusinessPhase]
+
+        for index, sector in enumerate(sectors):
+            with self.subTest(sector=sector):
+                response = self.post_opportunity(
+                    self.business_opportunity_body(
+                        title=f"Business sector {index}",
+                        business={
+                            **self.business_opportunity_body()["business"],
+                            "sector": sector,
+                        },
+                    )
+                )
+                self.assertEqual(response.status_code, 201)
+
+        for index, phase in enumerate(phases):
+            with self.subTest(phase=phase):
+                response = self.post_opportunity(
+                    self.business_opportunity_body(
+                        title=f"Business phase {index}",
+                        business={
+                            **self.business_opportunity_body()["business"],
+                            "phase": phase,
+                        },
+                    )
+                )
+                self.assertEqual(response.status_code, 201)
 
     def test_create_opportunity_accepts_valid_real_estate_variants(self):
         base_real_estate = self.opportunity_body()["real_estate"]
@@ -338,6 +426,50 @@ class OpportunitiesTest(unittest.TestCase):
         self.assertEqual(opportunity.status, OpportunityStatus.DRAFT)
         self.assertEqual(commitment.amount_cents, 7500)
 
+    def test_business_initial_contribution_reserves_funds_with_the_new_opportunity(self):
+        self.set_wallet_balance(800000)
+
+        response = self.post_opportunity(
+            self.business_opportunity_body(initial_contribution_cents=500000)
+        )
+
+        self.assertEqual(response.status_code, 201)
+        opportunity_id = response.json()["id"]
+        self.session.expire_all()
+        wallet = self.session.scalar(select(Wallet).where(Wallet.user_id == self.user.id))
+        opportunity = self.session.get(Opportunity, opportunity_id)
+        commitment = self.session.scalar(
+            select(Commitment).where(Commitment.opportunity_id == opportunity_id)
+        )
+        self.assertEqual(
+            (wallet.available_cents, wallet.committed_cents),
+            (300000, 500000),
+        )
+        self.assertEqual(opportunity.committed_cents, 500000)
+        self.assertEqual(opportunity.status, OpportunityStatus.DRAFT)
+        self.session.delete(commitment)
+        self.session.delete(opportunity)
+        self.session.commit()
+
+    def test_business_detail_calculates_equity_offered(self):
+        response = self.post_opportunity(
+            self.business_opportunity_body(target_amount_cents=15000000)
+        )
+
+        self.assertEqual(response.status_code, 201)
+        opportunity_id = response.json()["id"]
+        opportunity = self.session.get(Opportunity, opportunity_id)
+        opportunity.status = OpportunityStatus.PUBLISHED
+        opportunity.date_published = datetime.now(UTC)
+        self.session.commit()
+
+        detail = self.client.get(f"/api/opportunities/{opportunity_id}")
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(Decimal(detail.json()["business"]["equity_offered"]), Decimal("10"))
+        opportunity.status = OpportunityStatus.DRAFT
+        opportunity.date_published = None
+        self.session.commit()
+
     def test_opportunity_images_keep_their_order_and_access_rules(self):
         response = self.post_opportunity(
             self.opportunity_body(),
@@ -389,16 +521,29 @@ class OpportunitiesTest(unittest.TestCase):
             commitments_before,
         )
 
-    def test_equity_detail_without_business_data_returns_not_found(self):
-        created = self.post_opportunity(
-            self.opportunity_body(type="equity", real_estate=None)
+    def test_insufficient_business_initial_contribution_does_not_create_partial_data(self):
+        self.set_wallet_balance(800000)
+        commitments_before = self.session.scalar(select(func.count()).select_from(Commitment))
+
+        response = self.post_opportunity(
+            self.business_opportunity_body(
+                title="Business rollback opportunity",
+                initial_contribution_cents=900000,
+            )
         )
-        self.assertEqual(created.status_code, 201)
-        opportunity_id = created.json()["id"]
 
-        response = self.client.get(f"/api/opportunities/{opportunity_id}")
-
-        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.status_code, 409)
+        self.session.expire_all()
+        wallet = self.session.scalar(select(Wallet).where(Wallet.user_id == self.user.id))
+        opportunity = self.session.scalar(
+            select(Opportunity).where(Opportunity.title == "Business rollback opportunity")
+        )
+        self.assertEqual((wallet.available_cents, wallet.committed_cents), (800000, 0))
+        self.assertIsNone(opportunity)
+        self.assertEqual(
+            self.session.scalar(select(func.count()).select_from(Commitment)),
+            commitments_before,
+        )
 
     def create_database_opportunity(self, **changes):
         values = {
