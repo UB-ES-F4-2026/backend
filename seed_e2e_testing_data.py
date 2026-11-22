@@ -581,6 +581,8 @@ def seed_database(backend_url: str) -> None:
                 if key not in {"committed_cents", "cover_image_url"}
             }
             payload["location"] = opportunity_location(opportunity["location"])
+            if opportunity["type"] == "real_estate":
+                payload["real_estate"] = real_estate_details[opportunity["title"]]
             response = client.post(
                 OPPORTUNITIES_URL.format(API_BASE_URL=backend_url),
                 data={"metadata": json.dumps(payload)},
