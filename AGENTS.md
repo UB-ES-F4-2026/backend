@@ -128,7 +128,7 @@ docker compose logs --tail 60 backend db
 ## Seguretat i preservació de dades
 
 - No mostris, modifiquis ni versionis `.env`, secrets, tokens o credencials.
-- Preserva els volums `postgres_data` i `pgadmin_data`.
+- Preserva els volums `postgres_data`, `pgadmin_data` i `media_data`.
 - Utilitza `docker compose down` sense `-v`.
 - No executis `prune`, SQL destructiu ni eliminacions de volums per resoldre errors.
 - Investiga primer els logs i coordina qualsevol operació destructiva amb l'equip.

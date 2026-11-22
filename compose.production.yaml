@@ -46,6 +46,8 @@ services:
   backend:
     image: ${BACKEND_IMAGE:?Use a tested image digest}
     environment: *db-env
+    volumes:
+      - media_data:/app/media
     depends_on:
       db:
         condition: service_healthy
@@ -73,3 +75,4 @@ services:
 
 volumes:
   postgres_data:
+  media_data:

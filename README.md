@@ -163,6 +163,7 @@ Atura i elimina els contenidors del projecte, però conserva els volums amb les 
 |---|---|
 | `postgres_data` | Taules, registres i historial de migracions |
 | `pgadmin_data` | Compte i configuració de pgAdmin |
+| `media_data` | Imatges pujades de les oportunitats |
 
 Els noms complets tenen per defecte el prefix `fintech-local_`. No canviïs el nom del projecte Compose per resoldre problemes: podria seleccionar uns altres volums i semblaria que les dades han desaparegut.
 
