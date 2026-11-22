@@ -12,29 +12,21 @@ if TYPE_CHECKING:
 
 
 class BusinessSector(str, Enum):
-    FINTECH = "fintech"
+    TECHNOLOGY = "technology"
     INDUSTRY = "industry"
-    SAAS = "saas"
+    FOOD_AND_BEVERAGE = "food_and_beverage"
+    COMMERCE = "commerce"
     HEALTH = "health"
-    BIOTECH = "biotech"
-    CLEANTECH = "cleantech"
-    AGRITECH = "agritech"
-    FOODTECH = "foodtech"
-    D2C = "d2c"
-    EDUCATION = "education"
-    MEDIA = "media"
-    TOURISM = "tourism"
-    LOGISTIC = "logistic"
-    AI = "ai"
-    OTHER = "other"
+    ENERGY = "energy"
+    TOURISM_AND_LEISURE = "tourism_and_leisure"
+    OTHER_SERVICES = "other_services"
 
 
 class BusinessPhase(str, Enum):
-    PRE_SEED = "pre_seed"
-    SEED = "seed"
-    EARLY = "early"
+    IDEA = "idea"
+    LAUNCH = "launch"
     GROWTH = "growth"
-    LATE = "late"
+    CONSOLIDATED = "consolidated"
 
 
 class BusinessOpportunity(Base):
