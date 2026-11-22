@@ -334,9 +334,12 @@ business_details = {
     },
 }
 
-UPDATE_MINIMUM_CONTRIBUTION_SQL = """
+UPDATE_OPPORTUNITY_FOR_CATALOG_SQL = """
     UPDATE public.opportunities
-    SET minimum_contribution_cents = %(minimum_contribution_cents)s
+    SET minimum_contribution_cents = %(minimum_contribution_cents)s,
+        committed_cents = %(committed_cents)s,
+        status = 'published',
+        date_published = COALESCE(date_published, CURRENT_TIMESTAMP)
     WHERE title = %(title)s AND type = %(type)s
 """
 
@@ -441,7 +444,7 @@ def get_database_connection():
 
 
 def inject_sql_only_data() -> None:
-    """Actualiza aportaciones mínimas y metadatos inmobiliarios.
+    """Completa per SQL les dades del catàleg que l'API encara no exposa.
 
     Todas las operaciones SQL se ejecutan en una única transacción. Los
     metadatos especializados utilizan UPSERT, por lo que repetir el seed
@@ -450,17 +453,18 @@ def inject_sql_only_data() -> None:
     connection = get_database_connection()
     try:
         with connection.cursor() as cursor:
-            # OpportunityCreate descarta minimum_contribution_cents, así que
-            # este campo se establece directamente en la tabla principal.
+            # El seed necessita oportunitats públiques perquè el catàleg E2E
+            # les pugui consultar. La publicació encara no té endpoint.
             for opportunity in opportunities:
                 cursor.execute(
-                    UPDATE_MINIMUM_CONTRIBUTION_SQL,
+                    UPDATE_OPPORTUNITY_FOR_CATALOG_SQL,
                     {
                         "title": opportunity["title"],
                         "type": opportunity["type"],
                         "minimum_contribution_cents": opportunity[
                             "minimum_contribution_cents"
                         ],
+                        "committed_cents": opportunity["committed_cents"],
                     },
                 )
                 if cursor.rowcount != 1:
@@ -469,7 +473,7 @@ def inject_sql_only_data() -> None:
                         f"{opportunity['title']}: se encontraron "
                         f"{cursor.rowcount} filas (se esperaba exactamente 1)"
                     )
-                print(f"✅ Aportación mínima informada: {opportunity['title']}")
+                print(f"✅ Oportunidad publicada: {opportunity['title']}")
 
             for title, details in real_estate_details.items():
                 cursor.execute(INSERT_REAL_ESTATE_SQL, {"title": title, **details})
