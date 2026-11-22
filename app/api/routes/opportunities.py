@@ -66,15 +66,28 @@ def available_opportunity_filter():
 def get_opportunities(
     db: DbSession,
     name: Annotated[str | None, Query(max_length=255)] = None,
+    opportunity_type: Annotated[
+        OpportunityType | None, Query(alias="type")
+    ] = None,
 ) -> list[Opportunity]:
+    filters = [available_opportunity_filter()]
+    if opportunity_type is not None:
+        filters.append(Opportunity.type == opportunity_type)
+
     opportunities = db.scalars(
         select(Opportunity)
-        .where(available_opportunity_filter())
+        .where(*filters)
         .order_by(Opportunity.created_at.desc())
     ).all()
+
     if name is None or not name.strip():
         return list(opportunities)
-    return search_by_title(name, opportunities, lambda opportunity: opportunity.title)
+
+    return search_by_title(
+        query=name,
+        items=opportunities,
+        title=lambda opportunity: opportunity.title,
+    )
 
 
 @router.get(

@@ -1,4 +1,4 @@
-"""Búsqueda por título en el catálogo: GET /api/opportunities?name=..."""
+"""Filtre per tipus i cerca per títol: GET /api/opportunities?type=...&name=..."""
 import unittest
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
@@ -77,17 +77,88 @@ class OpportunitySearchTest(unittest.TestCase):
             db.commit()
             return opportunity.id
 
-    def search(self, name: str | None) -> list[str]:
-        params = {} if name is None else {"name": name}
+    def search(
+        self, name: str | None = None, opportunity_type: OpportunityType | None = None
+    ) -> list[str]:
+        params = {}
+        if name is not None:
+            params["name"] = name
+        if opportunity_type is not None:
+            params["type"] = opportunity_type.value
         response = self.client.get(URL, params=params)
         self.assertEqual(response.status_code, 200)
         return [opportunity["title"] for opportunity in response.json()]
 
     def test_without_name_returns_the_whole_catalog(self):
         self.add("Piso en Girona")
-        self.add("Nave en Reus")
+        self.add("Nave en Reus", type=OpportunityType.EQUITY)
         self.assertEqual(sorted(self.search(None)), ["Nave en Reus", "Piso en Girona"])
         self.assertEqual(sorted(self.search("   ")), ["Nave en Reus", "Piso en Girona"])
+
+    def test_type_filter_returns_only_available_opportunities_of_that_type(self):
+        self.add("Piso en Girona")
+        self.add("Empresa en Reus", type=OpportunityType.EQUITY)
+        self.add(
+            "Empresa cerrada",
+            type=OpportunityType.EQUITY,
+            status=OpportunityStatus.CLOSED,
+            date_closed=datetime.now(UTC),
+        )
+        self.add(
+            "Empresa borrador",
+            type=OpportunityType.EQUITY,
+            status=OpportunityStatus.DRAFT,
+            date_published=None,
+        )
+
+        self.assertEqual(
+            self.search(opportunity_type=OpportunityType.REAL_ESTATE),
+            ["Piso en Girona"],
+        )
+        self.assertEqual(
+            self.search(opportunity_type=OpportunityType.EQUITY),
+            ["Empresa en Reus"],
+        )
+        self.assertCountEqual(
+            self.search(),
+            ["Piso en Girona", "Empresa en Reus"],
+        )
+
+    def test_type_filter_is_applied_before_exact_and_approximate_name_search(self):
+        self.add("Casa en Gerona", type=OpportunityType.REAL_ESTATE)
+        self.add("Casa en Girona", type=OpportunityType.EQUITY)
+
+        self.assertEqual(
+            self.search("girona", OpportunityType.REAL_ESTATE),
+            ["Casa en Gerona"],
+        )
+        self.assertEqual(
+            self.search("girona", OpportunityType.EQUITY),
+            ["Casa en Girona"],
+        )
+
+    def test_exact_matches_take_priority_within_the_selected_type(self):
+        self.add("Casa en Girona", type=OpportunityType.REAL_ESTATE)
+        self.add("Casa en Gerona", type=OpportunityType.REAL_ESTATE)
+        self.add("Casa en Girona", type=OpportunityType.EQUITY)
+
+        self.assertEqual(
+            self.search("girona", OpportunityType.REAL_ESTATE),
+            ["Casa en Girona"],
+        )
+
+    def test_type_and_name_with_no_matches_returns_empty_list(self):
+        self.add("Casa en Girona", type=OpportunityType.EQUITY)
+
+        self.assertEqual(
+            self.search("girona", OpportunityType.REAL_ESTATE),
+            [],
+        )
+
+    def test_invalid_type_is_rejected(self):
+        response = self.client.get(URL, params={"type": "invalid"})
+
+        self.assertEqual(response.status_code, 422)
 
     def test_exact_match_ignores_case_and_accents(self):
         self.add("Rehabilitación de edificio en Lleida")
