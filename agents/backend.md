@@ -116,7 +116,15 @@ docker compose exec backend python -m unittest discover -s tests -v
 
 Fet vol dir: tot verd, `alembic check` sense diferències i cada criteri de la issue amb el seu test o comprovació. Per no tocar l'entorn local, usa l'equivalent amb `-f compose.ci.yaml` de [CI.md](../CI.md).
 
-Seed i E2E. `compose.ci.yaml` no publica ports, així que el seed corre contra `compose.yaml` i necessita `httpx` i `psycopg` (o `psycopg2`) al Python del host:
+Seed i E2E. Per defecte, executa'ls a l'entorn aïllat de `compose.e2e.yaml`: BD buida a cada execució, sense ports publicats ni res instal·lat a l'host, i sense tocar `fintech-local`. Agafa el frontend de `FRONTEND_PATH` (per defecte `../frontend`), així que els tests són els de la branca que hi tinguis:
+
+```bash
+sh scripts/run-e2e.sh
+```
+
+L'script atura l'entorn abans i després de cada execució (BD sempre buida), retorna el codi de sortida de Playwright i deixa l'informe a `e2e-report/playwright-report/index.html`, també si els tests fallen.
+
+Només si cal provar-los sobre l'entorn de desenvolupament (`compose.yaml` engegat), el seed necessita `httpx` i `psycopg` al Python de l'host, i Playwright, Node i Chromium a l'host:
 
 ```bash
 python seed_e2e_testing_data.py
@@ -125,4 +133,4 @@ npm ci && npx playwright install chromium
 PLAYWRIGHT_BASE_URL=http://127.0.0.1:<FRONTEND_PORT> npx playwright test --workers=1
 ```
 
-El seed suposa una BD sense les seves dades: si l'usuari `inyector@fintech.com` ja existeix a la BD local, tornar-lo a executar duplica les oportunitats i trenca els recomptes dels E2E. En aquest cas, demana a l'usuari abans d'executar-lo. Les PR de tasca cap a `feat/US…` no disparen el workflow E2E, així que la prova local és l'única abans de la PR de `feat` a `dev`; en aquesta, el comentari `Resultados E2E de Playwright` ha d'estar tot verd.
+Aquesta via escriu les dades del seed a la BD de desenvolupament de forma permanent, i el seed suposa una BD sense les seves dades: si l'usuari `inyector@fintech.com` ja existeix, tornar-lo a executar falla o duplica les oportunitats i trenca els recomptes dels E2E. Demana a l'usuari abans d'utilitzar-la. Les PR de tasca cap a `feat/US…` no disparen el workflow E2E, així que la prova local és l'única abans de la PR de `feat` a `dev`; en aquesta, el comentari `Resultados E2E de Playwright` ha d'estar tot verd.
