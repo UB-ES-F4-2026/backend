@@ -19,7 +19,10 @@ def get_wallet_balance(
 ) -> BalanceRead:
     response.headers["Cache-Control"] = "no-store"
     wallet = db.scalar(select(Wallet).where(Wallet.user_id == current_user.id))
-    return BalanceRead(available_cents=wallet.available_cents if wallet else 0)
+    return BalanceRead(
+        available_cents=wallet.available_cents if wallet else 0,
+        committed_cents=wallet.committed_cents if wallet else 0,
+    )
 
 
 @router.post("/withdrawals", response_model=WithdrawalRead)

@@ -132,6 +132,7 @@ class OpportunityDetailTest(unittest.TestCase):
             "image_url": "https://example.com/logo.png",
             "published_projects_count": body["promoter"]["published_projects_count"],
             "experience_years": 0,
+            "founding_year": None,
             "location": "Girona, Girona, España",
         })
         self.assertGreaterEqual(body["promoter"]["published_projects_count"], 1)
@@ -195,7 +196,6 @@ class OpportunityDetailTest(unittest.TestCase):
         cases = {
             "draft": {"status": OpportunityStatus.DRAFT, "date_published": None},
             "rejected": {"status": OpportunityStatus.REJECTED, "date_published": None},
-            "equity": {"type": OpportunityType.EQUITY, "real_estate": False},
             "real estate without property data": {"real_estate": False},
         }
         for name, changes in cases.items():

@@ -34,6 +34,14 @@ class BalanceRead(BaseModel):
             f"JavaScript: {MAX_SAFE_CENTS}."
         ),
     )
+    committed_cents: int = Field(
+        ge=0,
+        le=MAX_SAFE_CENTS,
+        description=(
+            "Saldo reservat en compromisos, en cèntims d'euro. No forma part "
+            "del saldo disponible ni es pot retirar."
+        ),
+    )
     currency: Literal["eur"] = "eur"
 
 
