@@ -163,8 +163,24 @@ Atura i elimina els contenidors del projecte, però conserva els volums amb les 
 |---|---|
 | `postgres_data` | Taules, registres i historial de migracions |
 | `pgadmin_data` | Compte i configuració de pgAdmin |
+| `media_data` | Imatges pujades de les oportunitats |
 
 Els noms complets tenen per defecte el prefix `fintech-local_`. No canviïs el nom del projecte Compose per resoldre problemes: podria seleccionar uns altres volums i semblaria que les dades han desaparegut.
+
+### Imatges d'oportunitats
+
+La creació d'una oportunitat rep un formulari `multipart/form-data`: el camp
+`metadata` conté el JSON de l'oportunitat i cada camp `images` conté una
+imatge, en l'ordre de la galeria. El backend exigeix almenys una imatge JPG,
+PNG o WebP de fins a 5 MB i en valida la signatura binària. La base de dades
+en conserva la clau relativa i opaca, el format, la mida en bytes i l'ordre;
+els fitxers es desen a `media_data` sense exposar rutes del sistema ni URL
+externes. La primera imatge és sempre la portada.
+
+Aquest volum és adequat mentre s'executi una sola instància de backend. Si el
+servei escala horitzontalment o necessita emmagatzematge distribuït, la capa
+d'emmagatzematge s'haurà de substituir per MinIO/S3 sense modificar el
+contracte multipart ni les claus desades a la base de dades.
 
 ## 6. Com funciona la configuració: ports i credencials
 
