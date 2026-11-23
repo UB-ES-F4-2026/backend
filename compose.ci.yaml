@@ -8,6 +8,11 @@ x-database-environment: &database-environment
   DB_HOST: db
   DB_PORT: "5432"
 
+x-backend-environment: &backend-environment
+  <<: *database-environment
+  STRIPE_SECRET_KEY: ""
+  STRIPE_WEBHOOK_SECRET: ""
+
 services:
   db:
     image: postgres:17-bookworm
@@ -24,7 +29,7 @@ services:
   backend:
     build:
       context: .
-    environment: *database-environment
+    environment: *backend-environment
     depends_on:
       db:
         condition: service_healthy

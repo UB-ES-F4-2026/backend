@@ -163,8 +163,24 @@ Atura i elimina els contenidors del projecte, però conserva els volums amb les 
 |---|---|
 | `postgres_data` | Taules, registres i historial de migracions |
 | `pgadmin_data` | Compte i configuració de pgAdmin |
+| `media_data` | Imatges pujades de les oportunitats |
 
 Els noms complets tenen per defecte el prefix `fintech-local_`. No canviïs el nom del projecte Compose per resoldre problemes: podria seleccionar uns altres volums i semblaria que les dades han desaparegut.
+
+### Imatges d'oportunitats
+
+La creació d'una oportunitat rep un formulari `multipart/form-data`: el camp
+`metadata` conté el JSON de l'oportunitat i cada camp `images` conté una
+imatge, en l'ordre de la galeria. El backend exigeix almenys una imatge JPG,
+PNG o WebP de fins a 5 MB i en valida la signatura binària. La base de dades
+en conserva la clau relativa i opaca, el format, la mida en bytes i l'ordre;
+els fitxers es desen a `media_data` sense exposar rutes del sistema ni URL
+externes. La primera imatge és sempre la portada.
+
+Aquest volum és adequat mentre s'executi una sola instància de backend. Si el
+servei escala horitzontalment o necessita emmagatzematge distribuït, la capa
+d'emmagatzematge s'haurà de substituir per MinIO/S3 sense modificar el
+contracte multipart ni les claus desades a la base de dades.
 
 ## 6. Com funciona la configuració: ports i credencials
 
@@ -314,6 +330,7 @@ Si necessites ajuda, comparteix **el comandament executat, la carpeta des d'on l
 | `alembic/`, `alembic.ini` | Configuració i historial de migracions |
 | `docker/pgadmin/` | Configuració inicial de pgAdmin |
 | `tests/test_migrations.py` | Prova de migracions en una base temporal |
+| `compose.e2e.yaml`, `scripts/run-e2e.sh`, `seed_e2e_testing_data.py` | Entorn aïllat, execució i dades dels tests E2E |
 
 Les rutes poden obtenir una sessió amb `Depends(get_db)`. Les operacions d'escriptura han de confirmar la transacció amb `commit()` i gestionar els errors.
 
@@ -332,3 +349,36 @@ docker compose exec backend python -m unittest discover -s tests -v
 La prova crea i elimina únicament la seva pròpia base temporal. Comprova la creació de taules, l'addició de columnes, la conservació de registres i la reaplicació de migracions.
 
 La guia específica de React és al [README del frontend](https://github.com/UB-ES-F4-2026/frontend#readme). Aquesta configuració cobreix només el desenvolupament local.
+
+## 11. Tests E2E amb Playwright
+
+Els tests E2E són al repositori del frontend i s'executen contra el frontend, el backend i PostgreSQL en un entorn aïllat (`compose.e2e.yaml`). No cal `.env`, Node ni Playwright a l'ordinador, i no toca l'entorn de desenvolupament: es pot executar amb `fintech-local` engegat.
+
+Des de `backend`, a Linux, macOS o Git Bash:
+
+```bash
+sh scripts/run-e2e.sh
+```
+
+A PowerShell:
+
+```powershell
+docker compose -f compose.e2e.yaml down; docker compose -f compose.e2e.yaml build; docker compose -f compose.e2e.yaml run --rm playwright; docker compose -f compose.e2e.yaml down
+```
+
+Cada execució:
+
+1. Atura qualsevol resta d'una execució anterior, de manera que la base de dades comença **sempre buida**.
+2. Arrenca PostgreSQL, el backend (que aplica les migracions) i el frontend.
+3. Crea les dades de prova automàticament amb `seed_e2e_testing_data.py`. No cal introduir cap dada a mà.
+4. Executa Playwright i atura l'entorn en acabar.
+
+**L'informe HTML queda a `e2e-report/playwright-report/index.html`**, també si els tests fallen. Obre'l amb el navegador. Les traces i captures dels tests fallits són a `e2e-report/test-results/`. La carpeta `e2e-report/` no es versiona i cada execució la substitueix.
+
+L'script retorna el codi de sortida de Playwright: `0` si tots els tests passen. Per defecte utilitza el frontend de `../frontend`; per provar-ne una altra carpeta o branca:
+
+```bash
+FRONTEND_PATH=/ruta/al/frontend sh scripts/run-e2e.sh
+```
+
+A la CI, el workflow `E2E Playwright Tests` els executa a cada PR cap a `dev`, publica l'informe i en deixa l'enllaç en un comentari de la PR. Vegeu [CI.md](CI.md#tests-e2e).

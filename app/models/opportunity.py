@@ -1,6 +1,7 @@
 """Investment opportunities offered by the platform."""
 from datetime import datetime
 from enum import Enum
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     CheckConstraint,
@@ -15,8 +16,12 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.business_opportunity import BusinessOpportunity
 from app.models.promoting_entity import PromotingEntity
 from app.models.real_estate_opportunity import RealEstateOpportunity
+
+if TYPE_CHECKING:
+    from app.models.opportunity_image import OpportunityImage
 
 
 class OpportunityType(str, Enum):
@@ -100,5 +105,14 @@ class Opportunity(Base):
     promoter: Mapped[PromotingEntity] = relationship()
     # Datos específicos de la categoría inmobiliaria, si los tiene.
     real_estate: Mapped[RealEstateOpportunity | None] = relationship(
+        back_populates="opportunity", cascade="all, delete-orphan", passive_deletes=True
+    )
+    images: Mapped[list["OpportunityImage"]] = relationship(
+        back_populates="opportunity",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="OpportunityImage.position",
+    )
+    business: Mapped[BusinessOpportunity | None] = relationship(
         back_populates="opportunity", cascade="all, delete-orphan", passive_deletes=True
     )
