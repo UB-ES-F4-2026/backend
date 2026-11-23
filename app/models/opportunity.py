@@ -4,11 +4,11 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     DateTime,
     Enum as SqlEnum,
     ForeignKey,
-    Integer,
     String,
     Text,
     func,
@@ -84,10 +84,11 @@ class Opportunity(Base):
     description: Mapped[str] = mapped_column(Text)
     location: Mapped[str] = mapped_column(String(255))
     cover_image_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
-    target_amount_cents: Mapped[int] = mapped_column(Integer)
-    committed_cents: Mapped[int] = mapped_column(Integer, default=0)
+    # Imports en BigInteger: un enter de 32 bits no passa de 21.474.836,47 €.
+    target_amount_cents: Mapped[int] = mapped_column(BigInteger)
+    committed_cents: Mapped[int] = mapped_column(BigInteger, default=0)
     # Nulable: los registros existentes no la tienen y no se inventan valores.
-    minimum_contribution_cents: Mapped[int | None] = mapped_column(Integer)
+    minimum_contribution_cents: Mapped[int | None] = mapped_column(BigInteger)
     deadline: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     date_published: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
