@@ -65,6 +65,7 @@ services:
       - "127.0.0.1:${FRONTEND_PORT:?Falta FRONTEND_PORT - configura backend/.env a partir de .env.example}:5173"
     environment:
       API_PROXY_TARGET: http://backend:8000
+      VITE_STRIPE_PUBLISHABLE_KEY: ${VITE_STRIPE_PUBLISHABLE_KEY:-}
     depends_on:
       backend:
         condition: service_healthy
