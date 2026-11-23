@@ -5,6 +5,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
 
+from app.core.funding import FundingStatus
 from app.models.opportunity import OpportunityStatus, OpportunityType
 from app.models.business_opportunity import BusinessPhase, BusinessSector
 from app.models.real_estate_opportunity import AssetType, IntendedUse, RealEstatePurpose
@@ -247,3 +248,39 @@ class BusinessOpportunityDetailRead(BaseModel):
         if self.images:
             self.cover_image_url = self.images[0].url
         return self
+
+
+class PromoterOpportunityRead(BaseModel):
+    """Una oportunitat de l'entitat promotora, tal com es mostra a «Mis oportunidades»."""
+
+    id: int
+    title: str
+    type: OpportunityType
+    # Estat en el moment de la consulta.
+    funding_status: FundingStatus
+    target_amount_cents: int
+    committed_cents: int
+    # Quants usuaris diferents hi han compromès saldo; mai qui són.
+    investors_count: int
+    deadline: datetime
+    # Nul·la mentre l'oportunitat està pendent de revisió: es mostra `created_at`.
+    date_published: datetime | None
+    created_at: datetime
+    # Les pendents de revisió encara no tenen detall públic.
+    is_public: bool
+
+
+class PromoterOpportunitiesSummaryRead(BaseModel):
+    # Capital compromès a les oportunitats publicades; les pendents de revisió no hi compten.
+    committed_cents: int
+    # El mateix recompte que `published_projects_count` al perfil de l'entitat.
+    published_count: int
+    in_funding_count: int
+    pending_review_count: int
+
+
+class PromoterOpportunitiesRead(BaseModel):
+    """Resum i llista de les oportunitats de l'entitat, de la més recent a la més antiga."""
+
+    summary: PromoterOpportunitiesSummaryRead
+    opportunities: list[PromoterOpportunityRead]

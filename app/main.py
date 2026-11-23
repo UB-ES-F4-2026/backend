@@ -26,6 +26,7 @@ app = FastAPI(title="Fintech API", version="0.1.0", lifespan=lifespan, docs_url=
 app.include_router(auth.router)
 app.include_router(commitments.router)
 app.include_router(opportunities.router)
+app.include_router(opportunities.me_router)
 app.include_router(promoting_entity.router)
 app.include_router(wallet.router)
 app.include_router(webhooks.router)

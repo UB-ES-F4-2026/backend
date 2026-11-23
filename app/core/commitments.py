@@ -11,9 +11,10 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.funding import FundingStatus, funding_status
 from app.core.wallet import lock_wallet
 from app.models.commitment import Commitment
-from app.models.opportunity import Opportunity, OpportunityStatus
+from app.models.opportunity import Opportunity
 
 
 class CommitmentError(Exception):
@@ -56,18 +57,12 @@ class BelowMinimumContribution(CommitmentError):
 def ensure_in_funding(opportunity: Opportunity, now: datetime) -> None:
     """Comprova que l'oportunitat admet aportacions dels usuaris en aquest moment.
 
-    Està en finançament si és publicada, no s'ha tancat, no ha vençut i encara
-    no ha assolit l'objectiu: les mateixes condicions que el catàleg disponible
-    (`available_opportunity_filter`). Cal cridar-la sobre l'oportunitat que
-    retorna `lock_opportunity`.
+    Està en finançament (`FundingStatus.IN_FUNDING`) si és publicada, no s'ha
+    tancat, no ha vençut i encara no ha assolit l'objectiu: les mateixes
+    condicions que el catàleg disponible (`available_opportunity_filter`).
+    Cal cridar-la sobre l'oportunitat que retorna `lock_opportunity`.
     """
-    in_funding = (
-        opportunity.status == OpportunityStatus.PUBLISHED
-        and opportunity.date_closed is None
-        and opportunity.deadline > now
-        and opportunity.committed_cents < opportunity.target_amount_cents
-    )
-    if not in_funding:
+    if funding_status(opportunity, now) != FundingStatus.IN_FUNDING:
         raise OpportunityNotFundable(opportunity.id)
 
 
