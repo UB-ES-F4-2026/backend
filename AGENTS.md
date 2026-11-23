@@ -38,6 +38,28 @@ Si la petició no especifica un rol, dedueix-lo i comunica quin apliques. Els ro
 - Utilitza Python 3.13 i sintaxi moderna de tipatge.
 - Segueix les convencions existents del projecte i evita refactoritzacions innecessàries.
 
+## Proves unitàries
+
+Abans d'afegir o modificar una regla de negoci, llegeix
+[`docs/qa/UNIT_TESTING.md`](docs/qa/UNIT_TESTING.md). Aquesta guia és
+obligatòria per als rols Backend i QA quan una tasca canvia comportament
+observable.
+
+Un endpoint nou no és per si mateix una prova unitària: separa'n les regles
+pures a `app/core/` o als esquemes Pydantic i afegeix proves
+`tests/test_*_unit.py`. Afegeix també una prova d'integració de la ruta amb
+FastAPI i PostgreSQL si intervé autenticació, persistència, transaccions o SQL.
+No simulis la base de dades per convertir una prova d'integració en unitària.
+
+## Proves d'integració
+
+Abans d'afegir o modificar una ruta, persistència, migració o contracte amb el
+frontend, llegeix [`docs/qa/INTEGRATION_TESTING.md`](docs/qa/INTEGRATION_TESTING.md).
+Les proves noves són `tests/test_*_integration.py` i usen FastAPI, Alembic i
+PostgreSQL temporal reals. Cada canvi de ruta cobreix èxit, autenticació o
+autorització, dades invàlides i persistència o rollback segons correspongui.
+No simulis PostgreSQL ni converteixis un recorregut HTTP en prova unitària.
+
 ## Flux de treball
 
 1. Comprova l'estat del repositori i preserva els canvis dels altres col·laboradors.

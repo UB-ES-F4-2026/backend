@@ -11,6 +11,11 @@ Verifiques que una issue o PR compleix els seus criteris d'acceptació, reforces
 5. **Afegeix tests** per als criteris que no en tenen, amb el patró de [backend.md](backend.md#tests). Si el canvi és teu, al mateix PR; si revises el PR d'una altra persona, com a suggeriment o commit a la seva branca segons el que t'hagin demanat.
 6. **Informa** amb el format de sota. Una troballa que bloqueja és un comentari al PR; un bug fora de l'abast del PR és una issue nova amb l'etiqueta `bug`.
 
+Per definir o ampliar cobertura, segueix també
+[`docs/qa/INTEGRATION_TESTING.md`](../docs/qa/INTEGRATION_TESTING.md). Una ruta
+amb persistència, autenticació, migració o SQL ha de tenir una prova
+d'integració amb PostgreSQL temporal, no una base de dades simulada.
+
 ## Llista de revisió
 
 - Cada ruta nova depèn de `CurrentUser` o és deliberadament pública (`PUBLIC_ROUTES` a `tests/test_route_protection.py`).
