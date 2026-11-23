@@ -9,6 +9,10 @@ from app.models.opportunity import OpportunityStatus, OpportunityType
 from app.models.business_opportunity import BusinessPhase, BusinessSector
 from app.models.real_estate_opportunity import AssetType, IntendedUse, RealEstatePurpose
 from app.schemas.promoting_entity import PromotingEntityRead
+from app.schemas.wallet import MAX_SAFE_CENTS
+
+# Import en cèntims: enter positiu que JavaScript pot representar sense pèrdua.
+AmountCents = Annotated[StrictInt, Field(gt=0, le=MAX_SAFE_CENTS)]
 
 
 class OpportunityImageRead(BaseModel):
@@ -107,7 +111,7 @@ class BusinessOpportunityCreate(BaseModel):
 
     sector: BusinessSector
     phase: BusinessPhase
-    pre_investment_valuation_cents: Annotated[StrictInt, Field(gt=0)]
+    pre_investment_valuation_cents: AmountCents
 
 
 class OpportunityCreate(BaseModel):
@@ -115,10 +119,10 @@ class OpportunityCreate(BaseModel):
     title: str = Field(min_length=1, max_length=255)
     description: str = Field(min_length=1)
     location: OpportunityLocationCreate
-    target_amount_cents: Annotated[StrictInt, Field(gt=0)]
-    minimum_contribution_cents: Annotated[StrictInt, Field(gt=0)]
+    target_amount_cents: AmountCents
+    minimum_contribution_cents: AmountCents
     deadline: datetime
-    initial_contribution_cents: Annotated[StrictInt, Field(gt=0)] | None = None
+    initial_contribution_cents: AmountCents | None = None
     real_estate: RealEstateOpportunityCreate | None = None
     business: BusinessOpportunityCreate | None = None
 
