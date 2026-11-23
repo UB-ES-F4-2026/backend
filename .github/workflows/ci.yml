@@ -3,7 +3,7 @@ name: Backend CI
 on:
   push:
   pull_request:
-    branches: [main]
+    branches: [dev, main]
   workflow_dispatch:
 
 permissions:
@@ -15,6 +15,11 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/heads/release/') }}
 
 jobs:
+  backend-unit-coverage:
+    name: Backend unit tests and coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
   lint:
     name: Backend static analysis (Ruff)
     runs-on: ubuntu-latest
@@ -23,14 +28,37 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
-      - name: Run Ruff
-        uses: astral-sh/ruff-action@278981a28ce3188b1e39527901f38254bf3aac89 # v4.1.0
+
+  backend-unit-coverage:
+    name: Backend unit tests and coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          version: "0.17.4"
-          args: check --output-format github
+          persist-credentials: false
+      - name: Build isolated test image
+        run: docker build --tag backend-ci .
+      - name: Run unit tests with branch coverage
+        run: |
+          docker create --name backend-unit-coverage --entrypoint sh \
+            --env POSTGRES_DB=fintech_unit --env POSTGRES_USER=fintech_unit \
+            --env POSTGRES_PASSWORD=unit_disposable_password --env DB_HOST=127.0.0.1 --env DB_PORT=5432 backend-ci \
+            -c "COVERAGE_FILE=/tmp/.coverage coverage run --branch --source=app.core,app.schemas,app.model_registry -m unittest discover -s tests -p 'test_name_search.py' -v && COVERAGE_FILE=/tmp/.coverage coverage run --branch --append -m unittest discover -s tests -p 'test_*_unit.py' -v && COVERAGE_FILE=/tmp/.coverage coverage report -m && COVERAGE_FILE=/tmp/.coverage coverage xml -o /tmp/coverage.xml"
+          docker start -a backend-unit-coverage
+          docker cp backend-unit-coverage:/tmp/coverage.xml coverage-backend.xml
+      - name: Upload backend coverage report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: backend-unit-coverage
+          path: coverage-backend.xml
+          if-no-files-found: error
+      - name: Remove temporary coverage container
+        if: always()
+        run: docker rm -f backend-unit-coverage || true
 
   backend-checks:
-    name: Backend build, migrations and health
+    name: Backend integration, migrations and health
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -39,8 +67,8 @@ jobs:
           persist-credentials: false
       - name: Build and start isolated services
         run: docker compose -f compose.ci.yaml up --build --wait --wait-timeout 180
-      - name: Run backend tests
-        run: docker compose -f compose.ci.yaml exec -T backend python -m unittest discover -s tests -v
+      - name: Run backend integration tests
+        run: docker compose -f compose.ci.yaml exec -T backend python tests/run_integration.py
       - name: Show service logs on failure
         if: failure()
         run: docker compose -f compose.ci.yaml logs --no-color
@@ -76,7 +104,7 @@ jobs:
   required-checks:
     name: Backend required checks
     if: always()
-    needs: [lint, backend-checks, production-checks]
+    needs: [lint, backend-unit-coverage, backend-checks, production-checks]
     runs-on: ubuntu-latest
     steps:
       # main only receives release/* and hotfix/*; this check is already required on main.
@@ -91,9 +119,10 @@ jobs:
           esac
       - env:
           LINT: ${{ needs.lint.result }}
-          DEVELOPMENT: ${{ needs.backend-checks.result }}
+          UNIT: ${{ needs.backend-unit-coverage.result }}
+          INTEGRATION: ${{ needs.backend-checks.result }}
           PRODUCTION: ${{ needs.production-checks.result }}
-        run: test "$LINT" = success && test "$DEVELOPMENT" = success && test "$PRODUCTION" = success
+        run: test "$LINT" = success && test "$UNIT" = success && test "$INTEGRATION" = success && test "$PRODUCTION" = success
 
   publish:
     name: Publish backend image
