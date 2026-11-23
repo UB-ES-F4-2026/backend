@@ -1,0 +1,13 @@
+# Override de staging sobre compose.production.yaml. S'utilitza amb:
+#   docker compose -p fintech-staging --env-file .env.staging \
+#     -f compose.production.yaml -f compose.staging.yaml ...
+# El port web el fixa WEB_PORT de .env.staging (8082).
+# El nom substitueix el de compose.production.yaml: sense -p, una ordre manual
+# a staging no pot actuar mai sobre fintech-prod.
+name: fintech-staging
+
+services:
+  db:
+    # Accés privat per a clients de BD només a través d'un túnel SSH.
+    ports:
+      - "127.0.0.1:5434:5432"

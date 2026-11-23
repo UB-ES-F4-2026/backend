@@ -11,6 +11,12 @@ done
 [[ "$IMAGE" =~ ^ghcr.io/ub-es-f4-2026/$COMPONENT@sha256:[a-f0-9]{64}$ ]]
 [[ "$GITHUB_SHA" =~ ^[a-f0-9]{40}$ ]]
 [[ "$GITHUB_RUN_NUMBER" =~ ^[0-9]+$ ]]
+# Producció manté exactament l'ordre anterior; staging executa la seva còpia de deploy.py.
+case "${DEPLOY_ENVIRONMENT:-production}" in
+  production) remote_command="python3 /app/fintech/deploy.py" ;;
+  staging) remote_command="python3 /app/fintech-staging/deploy.py --environment staging" ;;
+  *) echo "::error::Unknown DEPLOY_ENVIRONMENT"; exit 1 ;;
+esac
 umask 077
 ssh_dir=$(mktemp -d "$RUNNER_TEMP/fintech-ssh.XXXXXX")
 trap 'rm -f -- "$ssh_dir/key" "$ssh_dir/known_hosts"; rmdir -- "$ssh_dir"' EXIT
@@ -24,5 +30,5 @@ ssh -F /dev/null -T -p "$DEPLOY_PORT" -i "$ssh_dir/key" \
   -o "UserKnownHostsFile=$ssh_dir/known_hosts" -o GlobalKnownHostsFile=/dev/null \
   -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
   "$DEPLOY_USER@$DEPLOY_HOST" \
-  "python3 /app/fintech/deploy.py '$COMPONENT' '$IMAGE' '$GITHUB_SHA' '$GITHUB_RUN_NUMBER'" < /dev/null
-printf '### Deployment verified\nComponent: %s\nCommit: %s\nImage: %s\n' "$COMPONENT" "$GITHUB_SHA" "$IMAGE" >> "$GITHUB_STEP_SUMMARY"
+  "$remote_command '$COMPONENT' '$IMAGE' '$GITHUB_SHA' '$GITHUB_RUN_NUMBER'" < /dev/null
+printf '### Deployment verified\nEnvironment: %s\nComponent: %s\nCommit: %s\nImage: %s\n' "${DEPLOY_ENVIRONMENT:-production}" "$COMPONENT" "$GITHUB_SHA" "$IMAGE" >> "$GITHUB_STEP_SUMMARY"

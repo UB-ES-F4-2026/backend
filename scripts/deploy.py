@@ -12,8 +12,15 @@ import sys
 import time
 import urllib.request
 
-ROOT = Path('/app/fintech')
 KEYS = {'backend': 'BACKEND_IMAGE', 'frontend': 'WEB_IMAGE'}
+# Cada entorn té la seva carpeta, projecte Compose, .env i fitxers Compose.
+# Staging afegeix compose.staging.yaml com a override de compose.production.yaml.
+ENVIRONMENTS = {
+    'production': {'root': Path('/app/fintech'), 'project': 'fintech-prod', 'env': '.env.production',
+                   'compose': ('compose.production.yaml',)},
+    'staging': {'root': Path('/app/fintech-staging'), 'project': 'fintech-staging', 'env': '.env.staging',
+                'compose': ('compose.production.yaml', 'compose.staging.yaml')},
+}
 
 
 def require(condition, message):
@@ -67,11 +74,21 @@ def http_checks(port):
                 require(data.get('database') == 'ok' and data.get('status') == 'ok', 'Database health failed')
 
 
-def deploy(root, component, image, revision, sequence):
+def compose_sha256(root, files):
+    digest = hashlib.sha256()
+    for name in files:
+        digest.update((root / name).read_bytes())
+    return digest.hexdigest()
+
+
+def deploy(root, component, image, revision, sequence, environment='production'):
     validate(component, image, revision, sequence)
+    require(environment in ENVIRONMENTS, 'Unknown environment')
+    settings = ENVIRONMENTS[environment]
+    project = settings['project']
     marker = root / 'DEPLOYMENT_BLOCKED.json'
     require(not marker.exists(), 'Previous deployment interrupted/failed; inspect DEPLOYMENT_BLOCKED.json before continuing')
-    env = root / '.env.production'
+    env = root / settings['env']
     text = env.read_text()
     previous = images(text)
     manifest = root / 'release-current.json'
@@ -81,13 +98,15 @@ def deploy(root, component, image, revision, sequence):
         return
     port = re.findall(r'^WEB_PORT=(\d+)$', text, re.M)
     require(len(port) == 1 and 1 <= int(port[0]) <= 65535, 'Invalid WEB_PORT')
-    dc_base = ['docker', 'compose', '-p', 'fintech-prod', '--env-file', str(env), '-f', str(root / 'compose.production.yaml')]
+    dc_base = ['docker', 'compose', '-p', project, '--env-file', str(env)]
+    for name in settings['compose']:
+        dc_base += ['-f', str(root / name)]
     run(dc_base + ['config', '--quiet'])
     for service in ('db', 'backend', 'caddy'):
         ids = run(dc_base + ['ps', '-q', service]).split()
         require(len(ids) == 1, 'Expected running project service: ' + service)
         info = json.loads(run(['docker', 'inspect', '--format', '{{json .Config.Labels}}', ids[0]]))
-        require(info.get('com.docker.compose.project') == 'fintech-prod' and info.get('com.docker.compose.service') == service, 'Wrong project/service')
+        require(info.get('com.docker.compose.project') == project and info.get('com.docker.compose.service') == service, 'Wrong project/service')
         health = run(['docker', 'inspect', '--format', '{{.State.OOMKilled}} {{.State.Health.Status}}', ids[0]]).strip()
         require(health == 'false healthy', 'Unhealthy/OOM service; diagnose before deploying: ' + service)
     require(shutil.disk_usage(root).free > 1024**3, 'Less than 1 GiB free disk space')
@@ -106,7 +125,7 @@ def deploy(root, component, image, revision, sequence):
     shutil.copyfile(env, archive / 'previous.env')
     record = {'release': release_id, 'component': component, 'commit': revision,
               'previous': previous, 'images': images(candidate.read_text()),
-              'compose_sha256': hashlib.sha256((root / 'compose.production.yaml').read_bytes()).hexdigest(),
+              'compose_sha256': compose_sha256(root, settings['compose']),
               'sequences': {**state['sequences'], component: sequence}, 'status': 'in_progress'}
     write_json(archive / 'release.json', record)
     # Persist before any service mutation. A killed runner cannot silently unlock
@@ -159,12 +178,14 @@ def main():
     parser.add_argument('image')
     parser.add_argument('revision')
     parser.add_argument('sequence', type=int)
+    parser.add_argument('--environment', choices=ENVIRONMENTS, default='production')
     args = parser.parse_args()
+    root = ENVIRONMENTS[args.environment]['root']
     os.umask(0o077)
     # Compose must not receive stale image overrides from the caller's shell.
     for key in ('BACKEND_IMAGE', 'WEB_IMAGE', 'POSTGRES_DB', 'POSTGRES_USER', 'POSTGRES_PASSWORD', 'WEB_PORT'):
         os.environ.pop(key, None)
-    with (ROOT / '.deploy.lock').open('a') as lock:
+    with (root / '.deploy.lock').open('a') as lock:
         deadline = time.monotonic() + 900
         while True:
             try:
@@ -173,7 +194,7 @@ def main():
             except BlockingIOError:
                 require(time.monotonic() < deadline, 'Timed out waiting for another deployment')
                 time.sleep(2)
-        deploy(ROOT, args.component, args.image, args.revision, args.sequence)
+        deploy(root, args.component, args.image, args.revision, args.sequence, args.environment)
 
 
 if __name__ == '__main__':
