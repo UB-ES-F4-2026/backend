@@ -1,5 +1,6 @@
 """Cossos de petició i resposta dels compromisos."""
 from datetime import datetime
+from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -18,6 +19,8 @@ class CommitmentRead(BaseModel):
     opportunity_id: int
     amount_cents: int
     created_at: datetime
+    # Percentatge de l'empresa; només en oportunitats empresarials.
+    estimated_equity: Decimal | None = None
 
 
 class OpportunityFundingRead(BaseModel):

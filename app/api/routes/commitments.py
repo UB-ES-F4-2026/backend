@@ -1,5 +1,6 @@
 """Comprometre saldo en una oportunitat en finançament."""
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException, Response, status
 
@@ -11,6 +12,7 @@ from app.core.commitments import (
     OpportunityNotFound,
     ensure_in_funding,
     ensure_minimum_contribution,
+    estimated_equity_percent,
     lock_opportunity,
     reserve_funds,
 )
@@ -32,12 +34,24 @@ INSUFFICIENT_FUNDS = "Insufficient funds"
 NOT_ACCEPTED = "Opportunity no longer accepts this contribution"
 
 
-def is_public_real_estate(opportunity: Opportunity) -> bool:
-    # El mateix criteri que el detall públic: esborranys, rebutjades i altres
-    # tipus no existeixen per a l'usuari.
-    return opportunity.type == OpportunityType.REAL_ESTATE and opportunity.status in (
-        OpportunityStatus.PUBLISHED,
-        OpportunityStatus.CLOSED,
+def is_public(opportunity: Opportunity) -> bool:
+    # El mateix criteri que el detall públic: no existeixen per a l'usuari els
+    # esborranys, les rebutjades ni les que no tenen les dades del seu tipus.
+    if opportunity.status not in (OpportunityStatus.PUBLISHED, OpportunityStatus.CLOSED):
+        return False
+    if opportunity.type == OpportunityType.REAL_ESTATE:
+        return opportunity.real_estate is not None
+    return opportunity.business is not None
+
+
+def estimated_equity(opportunity: Opportunity, amount_cents: int) -> Decimal | None:
+    """Participació estimada de la inversió; les aportacions immobiliàries no en tenen."""
+    if opportunity.type != OpportunityType.EQUITY:
+        return None
+    return estimated_equity_percent(
+        amount_cents,
+        pre_investment_valuation_cents=opportunity.business.pre_investment_valuation_cents,
+        target_amount_cents=opportunity.target_amount_cents,
     )
 
 
@@ -64,7 +78,10 @@ def commit_contribution(
     db: DbSession,
     response: Response,
 ) -> CommitmentResultRead:
-    """Compromet una aportació de l'usuari autenticat en una oportunitat immobiliària.
+    """Compromet una aportació o una inversió de l'usuari autenticat en una oportunitat.
+
+    Serveix per a les oportunitats immobiliàries i les empresarials; en aquestes
+    últimes la resposta inclou la participació estimada.
 
     Totes les comprovacions es fan amb l'oportunitat i el wallet bloquejats, de
     manera que el saldo i la disponibilitat es revaliden en el moment de confirmar.
@@ -72,7 +89,7 @@ def commit_contribution(
     response.headers["Cache-Control"] = "no-store"
     try:
         opportunity = lock_opportunity(db, opportunity_id)
-        if not is_public_real_estate(opportunity):
+        if not is_public(opportunity):
             raise OpportunityNotFound(opportunity_id)
         ensure_in_funding(opportunity, datetime.now(UTC))
         ensure_minimum_contribution(opportunity, body.amount_cents)
@@ -89,7 +106,13 @@ def commit_contribution(
 
     wallet = lock_wallet(db, current_user.id)
     result = CommitmentResultRead(
-        commitment=CommitmentRead.model_validate(commitment),
+        commitment=CommitmentRead(
+            id=commitment.id,
+            opportunity_id=commitment.opportunity_id,
+            amount_cents=commitment.amount_cents,
+            created_at=commitment.created_at,
+            estimated_equity=estimated_equity(opportunity, commitment.amount_cents),
+        ),
         opportunity=OpportunityFundingRead.model_validate(opportunity),
         wallet=BalanceRead(
             available_cents=wallet.available_cents,
