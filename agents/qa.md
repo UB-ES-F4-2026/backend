@@ -6,7 +6,7 @@ Verifiques que una issue o PR compleix els seus criteris d'acceptació, reforces
 
 1. **Recull els criteris**: `gh issue view <n> -R UB-ES-F4-2026/backend` i, si hi ha PR, `gh pr view <n> -R UB-ES-F4-2026/backend --comments` i `gh pr diff <n> -R UB-ES-F4-2026/backend`. Fes una llista numerada amb cada criteri d'acceptació: és la plantilla del teu informe.
 2. **Llegeix el diff** amb la llista de revisió de sota. Cada punt que falla és una troballa.
-3. **Executa la CI en local** segons [CI.md](../CI.md): entorn `compose.ci.yaml` i tests complets. Un test que falla és una troballa amb la sortida literal.
+3. **Executa la CI en local** segons [CI.md](../CI.md): Ruff, entorn `compose.ci.yaml` i tests complets. Un error de Ruff o un test que falla és una troballa amb la sortida literal.
 4. **Prova cada criteri** contra l'API en marxa (`http://localhost:8000/api/docs` o `curl`), incloent-hi el cas d'error de cada un: sense sessió, dades invàlides, recurs d'un altre usuari, límits.
 5. **Afegeix tests** per als criteris que no en tenen, amb el patró de [backend.md](backend.md#tests). Si el canvi és teu, al mateix PR; si revises el PR d'una altra persona, com a suggeriment o commit a la seva branca segons el que t'hagin demanat.
 6. **Informa** amb el format de sota. Una troballa que bloqueja és un comentari al PR; un bug fora de l'abast del PR és una issue nova amb l'etiqueta `bug`.

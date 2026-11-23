@@ -15,6 +15,20 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  lint:
+    name: Backend static analysis (Ruff)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Run Ruff
+        uses: astral-sh/ruff-action@278981a28ce3188b1e39527901f38254bf3aac89 # v4.1.0
+        with:
+          version: "0.17.4"
+          args: check --output-format github
+
   backend-checks:
     name: Backend build, migrations and health
     runs-on: ubuntu-latest
@@ -61,13 +75,24 @@ jobs:
   required-checks:
     name: Backend required checks
     if: always()
-    needs: [backend-checks, production-checks]
+    needs: [lint, backend-checks, production-checks]
     runs-on: ubuntu-latest
     steps:
+      # main only receives release/* and hotfix/*; this check is already required on main.
+      - name: Check PR source branch
+        if: github.event_name == 'pull_request' && github.base_ref == 'main'
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          case "$HEAD_REF" in
+            release/*|hotfix/*) ;;
+            *) echo "::error::Las PR hacia main solo pueden salir de release/* o hotfix/* (esta sale de $HEAD_REF)."; exit 1 ;;
+          esac
       - env:
+          LINT: ${{ needs.lint.result }}
           DEVELOPMENT: ${{ needs.backend-checks.result }}
           PRODUCTION: ${{ needs.production-checks.result }}
-        run: test "$DEVELOPMENT" = success && test "$PRODUCTION" = success
+        run: test "$LINT" = success && test "$DEVELOPMENT" = success && test "$PRODUCTION" = success
 
   publish:
     name: Publish backend image
