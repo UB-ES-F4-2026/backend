@@ -6,6 +6,7 @@ d'aquest mòdul fa `commit()`: la transacció és de qui les crida, que també
 tradueix les excepcions a la resposta HTTP que li correspongui.
 """
 from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -84,6 +85,19 @@ def ensure_minimum_contribution(opportunity: Opportunity, amount_cents: int) -> 
     required_cents = min(minimum_cents, remaining_cents)
     if amount_cents < required_cents:
         raise BelowMinimumContribution(amount_cents, required_cents)
+
+
+def estimated_equity_percent(
+    amount_cents: int, *, pre_investment_valuation_cents: int, target_amount_cents: int
+) -> Decimal:
+    """Participació estimada, en percentatge, d'una inversió en una oportunitat empresarial.
+
+    És la part de l'empresa que correspondria a l'import si s'assoleix l'objectiu:
+    import / (valoració prèvia + objectiu). No s'arrodoneix, igual que
+    `equity_offered` al detall: l'arrodoniment és cosa de la presentació.
+    """
+    post_investment_valuation_cents = pre_investment_valuation_cents + target_amount_cents
+    return Decimal(amount_cents) / Decimal(post_investment_valuation_cents) * Decimal(100)
 
 
 def lock_opportunity(db: Session, opportunity_id: int) -> Opportunity:
