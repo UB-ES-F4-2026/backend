@@ -1,8 +1,10 @@
-"""Comprometre saldo en una oportunitat en finançament."""
+"""Comprometre saldo en una oportunitat en finançament i consultar els compromisos propis."""
 from datetime import UTC, datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException, Response, status
+from sqlalchemy import select
+from sqlalchemy.orm import joinedload
 
 from app.api.deps import CurrentUser, DbSession
 from app.core.commitments import (
@@ -16,17 +18,25 @@ from app.core.commitments import (
     lock_opportunity,
     reserve_funds,
 )
+from app.core.funding import FundingStatus, funding_status
 from app.core.wallet import lock_wallet
+from app.models.commitment import Commitment
 from app.models.opportunity import Opportunity, OpportunityStatus, OpportunityType
 from app.schemas.commitment import (
     CommitmentCreate,
+    CommitmentOpportunityRead,
     CommitmentRead,
     CommitmentResultRead,
     OpportunityFundingRead,
+    UserCommitmentRead,
+    UserCommitmentsRead,
+    UserCommitmentsSummaryRead,
 )
 from app.schemas.wallet import BalanceRead
 
 router = APIRouter(prefix="/api/opportunities", tags=["commitments"])
+# Consultes de l'usuari autenticat sobre els seus propis compromisos.
+me_router = APIRouter(prefix="/api/me/commitments", tags=["commitments"])
 
 NOT_AVAILABLE = "Opportunity not available"
 BELOW_MINIMUM = "Amount below the minimum contribution"
@@ -46,7 +56,8 @@ def is_public(opportunity: Opportunity) -> bool:
 
 def estimated_equity(opportunity: Opportunity, amount_cents: int) -> Decimal | None:
     """Participació estimada de la inversió; les aportacions immobiliàries no en tenen."""
-    if opportunity.type != OpportunityType.EQUITY:
+    # Sense les dades empresarials no hi ha valoració prèvia amb què calcular-la.
+    if opportunity.type != OpportunityType.EQUITY or opportunity.business is None:
         return None
     return estimated_equity_percent(
         amount_cents,
@@ -121,3 +132,58 @@ def commit_contribution(
     )
     db.commit()
     return result
+
+
+@me_router.get("", response_model=UserCommitmentsRead)
+def get_my_commitments(
+    current_user: CurrentUser,
+    db: DbSession,
+    response: Response,
+) -> UserCommitmentsRead:
+    """Compromisos de l'usuari autenticat, del més recent al més antic.
+
+    Cada compromís es llista per separat, amb l'estat i el progrés que
+    l'oportunitat té ara. Inclou les aportacions inicials a oportunitats pròpies
+    pendents de revisió, que compten al total però no tenen detall públic.
+    """
+    response.headers["Cache-Control"] = "no-store"
+    rows = db.execute(
+        select(Commitment, Opportunity)
+        .join(Opportunity, Opportunity.id == Commitment.opportunity_id)
+        .where(Commitment.user_id == current_user.id)
+        # Les dades de tipus decideixen si té detall públic i la participació estimada.
+        .options(joinedload(Opportunity.real_estate), joinedload(Opportunity.business))
+        .order_by(Commitment.created_at.desc(), Commitment.id.desc())
+    ).all()
+
+    now = datetime.now(UTC)
+    commitments = [
+        UserCommitmentRead(
+            id=commitment.id,
+            amount_cents=commitment.amount_cents,
+            created_at=commitment.created_at,
+            estimated_equity=estimated_equity(opportunity, commitment.amount_cents),
+            opportunity=CommitmentOpportunityRead(
+                id=opportunity.id,
+                title=opportunity.title,
+                type=opportunity.type,
+                funding_status=funding_status(opportunity, now),
+                target_amount_cents=opportunity.target_amount_cents,
+                committed_cents=opportunity.committed_cents,
+                deadline=opportunity.deadline,
+                is_public=is_public(opportunity),
+            ),
+        )
+        for commitment, opportunity in rows
+    ]
+    return UserCommitmentsRead(
+        summary=UserCommitmentsSummaryRead(
+            total_committed_cents=sum(item.amount_cents for item in commitments),
+            commitments_count=len(commitments),
+            in_funding_count=sum(
+                item.opportunity.funding_status == FundingStatus.IN_FUNDING
+                for item in commitments
+            ),
+        ),
+        commitments=commitments,
+    )
