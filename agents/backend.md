@@ -10,7 +10,7 @@ Implementes canvis a l'API: rutes, esquemes, models, migracions i tests. Treball
 4. **Escriu o amplia tests** a `tests/` per a cada criteri i per a cada codi d'error nou.
 5. **Actualitza el seed E2E** segons [Seed E2E](#seed-e2e). Està fet quan, amb el codi de la branca i sobre una BD buida, `seed_e2e_testing_data.py` acaba sense cap ❌. Si el canvi no afecta cap dada del seed, digues-ho al PR amb el motiu.
 6. **Valida** amb les ordres de la secció final. Fins que no passa tot, la tasca no està feta.
-7. **Entrega**: PR cap a la branca `feat/US…` de la història d'usuari (les `feat` es fusionen a `dev`, i `dev` a `main` a cada release) amb `Closes #n`, resum del contracte de l'API (rutes, camps, codis d'estat) perquè el frontend el pugui consumir, els canvis al seed i les decisions preses sobre criteris ambigus.
+7. **Entrega**: PR cap a la branca `feat/US…` de la història d'usuari (les `feat` es fusionen a `dev`; a cada release es crea `release/x.y` des de `dev` i es fusiona a `main`) amb `Closes #n`, resum del contracte de l'API (rutes, camps, codis d'estat) perquè el frontend el pugui consumir, els canvis al seed i les decisions preses sobre criteris ambigus.
 
 ## Mapa del codi
 
@@ -25,7 +25,7 @@ Implementes canvis a l'API: rutes, esquemes, models, migracions i tests. Treball
 | Motor, `Base`, `get_db` | `app/database.py` |
 | Migracions `<hash>_descripcio.py` | `alembic/versions/` |
 | Seed de dades per als E2E i el desenvolupament local | `seed_e2e_testing_data.py` |
-| Workflow E2E (Playwright del frontend `dev` contra aquest backend) | `.github/workflows/e2e-playwright.yml` |
+| Workflow E2E (Playwright del frontend de la mateixa branca que el destí de la PR contra aquest backend) | `.github/workflows/e2e-playwright.yml` |
 | Tests `unittest`, un fitxer per recurs | `tests/` |
 
 ## Convencions
@@ -65,7 +65,7 @@ Implementes canvis a l'API: rutes, esquemes, models, migracions i tests. Treball
 
 ### Seed E2E
 
-`seed_e2e_testing_data.py` omple una BD acabada de migrar amb les dades que els E2E de Playwright i el desenvolupament local utilitzaran. El workflow E2E l'executa en les PR cap a `dev` dels dos repositoris: un seed desfasat fa caure els E2E de tots dos encara que els tests unitaris passin. El seed és part del canvi i va al mateix PR. En definitiva, s'utilitza per nodrir un backend efímer contra el qual s'executen els tests e2e, i pretèn portar una base de dades acabada de migrar i buida a un estat amb dades sintètiques que cobreixin una casuística molt àmplia.
+`seed_e2e_testing_data.py` omple una BD acabada de migrar amb les dades que els E2E de Playwright i el desenvolupament local utilitzaran. El workflow E2E l'executa en les PR cap a `dev`, `release/*` i `main` dels dos repositoris: un seed desfasat fa caure els E2E de tots dos encara que els tests unitaris passin. El seed és part del canvi i va al mateix PR. En definitiva, s'utilitza per nodrir un backend efímer contra el qual s'executen els tests e2e, i pretèn portar una base de dades acabada de migrar i buida a un estat amb dades sintètiques que cobreixin una casuística molt àmplia.
 
 Actualitza'l quan el canvi contingui:
 
@@ -112,11 +112,20 @@ docker compose config --quiet
 docker compose up --build --wait
 docker compose exec backend alembic check
 docker compose exec backend python -m unittest discover -s tests -v
+docker run --rm -v "$PWD":/io:z -w /io ghcr.io/astral-sh/ruff:0.17.4 check
 ```
 
-Fet vol dir: tot verd, `alembic check` sense diferències i cada criteri de la issue amb el seu test o comprovació. Per no tocar l'entorn local, usa l'equivalent amb `-f compose.ci.yaml` de [CI.md](../CI.md).
+Fet vol dir: tot verd, Ruff sense errors, `alembic check` sense diferències i cada criteri de la issue amb el seu test o comprovació. Per no tocar l'entorn local, usa l'equivalent amb `-f compose.ci.yaml` de [CI.md](../CI.md).
 
-Seed i E2E. `compose.ci.yaml` no publica ports, així que el seed corre contra `compose.yaml` i necessita `httpx` i `psycopg` (o `psycopg2`) al Python del host:
+Seed i E2E. Per defecte, executa'ls a l'entorn aïllat de `compose.e2e.yaml`: BD buida a cada execució, sense ports publicats ni res instal·lat a l'host, i sense tocar `fintech-local`. Agafa el frontend de `FRONTEND_PATH` (per defecte `../frontend`), així que els tests són els de la branca que hi tinguis:
+
+```bash
+sh scripts/run-e2e.sh
+```
+
+L'script atura l'entorn abans i després de cada execució (BD sempre buida), retorna el codi de sortida de Playwright i deixa l'informe a `e2e-report/playwright-report/index.html`, també si els tests fallen.
+
+Només si cal provar-los sobre l'entorn de desenvolupament (`compose.yaml` engegat), el seed necessita `httpx` i `psycopg` al Python de l'host, i Playwright, Node i Chromium a l'host:
 
 ```bash
 python seed_e2e_testing_data.py
@@ -125,4 +134,4 @@ npm ci && npx playwright install chromium
 PLAYWRIGHT_BASE_URL=http://127.0.0.1:<FRONTEND_PORT> npx playwright test --workers=1
 ```
 
-El seed suposa una BD sense les seves dades: si l'usuari `inyector@fintech.com` ja existeix a la BD local, tornar-lo a executar duplica les oportunitats i trenca els recomptes dels E2E. En aquest cas, demana a l'usuari abans d'executar-lo. Les PR de tasca cap a `feat/US…` no disparen el workflow E2E, així que la prova local és l'única abans de la PR de `feat` a `dev`; en aquesta, el comentari `Resultados E2E de Playwright` ha d'estar tot verd.
+Aquesta via escriu les dades del seed a la BD de desenvolupament de forma permanent, i el seed suposa una BD sense les seves dades: si l'usuari `inyector@fintech.com` ja existeix, tornar-lo a executar falla o duplica les oportunitats i trenca els recomptes dels E2E. Demana a l'usuari abans d'utilitzar-la. Les PR de tasca cap a `feat/US…` no disparen el workflow E2E, així que la prova local és l'única abans de la PR de `feat` a `dev`; en aquesta, el comentari `Resultados E2E de Playwright` ha d'estar tot verd.

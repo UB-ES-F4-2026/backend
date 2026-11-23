@@ -2,7 +2,7 @@
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, Enum as SqlEnum, ForeignKey, Integer
+from sqlalchemy import BigInteger, CheckConstraint, Enum as SqlEnum, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -12,29 +12,21 @@ if TYPE_CHECKING:
 
 
 class BusinessSector(str, Enum):
-    FINTECH = "fintech"
+    TECHNOLOGY = "technology"
     INDUSTRY = "industry"
-    SAAS = "saas"
+    FOOD_AND_BEVERAGE = "food_and_beverage"
+    COMMERCE = "commerce"
     HEALTH = "health"
-    BIOTECH = "biotech"
-    CLEANTECH = "cleantech"
-    AGRITECH = "agritech"
-    FOODTECH = "foodtech"
-    D2C = "d2c"
-    EDUCATION = "education"
-    MEDIA = "media"
-    TOURISM = "tourism"
-    LOGISTIC = "logistic"
-    AI = "ai"
-    OTHER = "other"
+    ENERGY = "energy"
+    TOURISM_AND_LEISURE = "tourism_and_leisure"
+    OTHER_SERVICES = "other_services"
 
 
 class BusinessPhase(str, Enum):
-    PRE_SEED = "pre_seed"
-    SEED = "seed"
-    EARLY = "early"
+    IDEA = "idea"
+    LAUNCH = "launch"
     GROWTH = "growth"
-    LATE = "late"
+    CONSOLIDATED = "consolidated"
 
 
 class BusinessOpportunity(Base):
@@ -67,6 +59,6 @@ class BusinessOpportunity(Base):
             values_callable=lambda enum: [member.value for member in enum],
         )
     )
-    pre_investment_valuation_cents: Mapped[int] = mapped_column(Integer)
+    pre_investment_valuation_cents: Mapped[int] = mapped_column(BigInteger)
 
     opportunity: Mapped["Opportunity"] = relationship(back_populates="business")

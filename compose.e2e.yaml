@@ -1,0 +1,111 @@
+# Entorn E2E aïllat: executa el seed i els tests de Playwright del frontend.
+# Executa'l amb scripts/run-e2e.sh, que l'atura abans i després de cada
+# execució perquè la BD comenci buida. L'informe queda a e2e-report/.
+# Projecte propi, BD en tmpfs i cap port publicat: no toca fintech-local ni els
+# seus volums, i es pot executar amb l'entorn de desenvolupament engegat.
+name: fintech-e2e
+
+x-database-environment: &database-environment
+  POSTGRES_DB: fintech_e2e
+  POSTGRES_USER: fintech_e2e
+  POSTGRES_PASSWORD: e2e_disposable_password
+  DB_HOST: db
+  DB_PORT: "5432"
+
+services:
+  db:
+    image: docker.io/library/postgres:17-bookworm
+    environment: *database-environment
+    # Cada execució comença amb una BD buida.
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fintech_e2e -d fintech_e2e"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  # Imatge de desenvolupament: aplica les migracions en arrencar.
+  backend:
+    build:
+      context: .
+    environment: *database-environment
+    depends_on:
+      db:
+        condition: service_healthy
+    init: true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 3s
+      timeout: 4s
+      retries: 40
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ${FRONTEND_PATH:-../frontend}
+    environment:
+      API_PROXY_TARGET: http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    init: true
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5173/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 3s
+      timeout: 4s
+      retries: 40
+      start_period: 10s
+
+  # Comparteix la xarxa del backend: l'API és a localhost:8000, com espera el seed.
+  seed:
+    build:
+      context: .
+    network_mode: service:backend
+    working_dir: /seed
+    entrypoint: ["python", "seed_e2e_testing_data.py"]
+    environment:
+      <<: *database-environment
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      BACKEND_PORT: "8000"
+    volumes:
+      - ./seed_e2e_testing_data.py:/seed/seed_e2e_testing_data.py:ro,z
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  # Comparteix la xarxa del frontend: Vite només accepta peticions a localhost.
+  # La versió de la imatge ha de coincidir amb @playwright/test del package-lock.json.
+  playwright:
+    image: mcr.microsoft.com/playwright:v1.65.0-noble
+    network_mode: service:frontend
+    environment:
+      CI: "true"
+      PLAYWRIGHT_BASE_URL: http://127.0.0.1:5173
+    # El frontend es munta només de lectura i es copia dins del contenedor, perquè
+    # npm ci i els resultats no escriguin al repositori. L'informe es copia a
+    # e2e-report/ en acabar, també si els tests fallen.
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -e
+        mkdir -p /app && cd /app
+        tar -C /src --exclude=./node_modules --exclude=./playwright-report --exclude=./test-results -cf - . | tar -C /app -xf -
+        npm ci --no-audit --no-fund
+        status=0
+        npx playwright test --workers=1 || status=$$?
+        rm -rf /out/playwright-report /out/test-results
+        cp -r playwright-report test-results /out/ 2>/dev/null || true
+        chmod -R a+rwX /out
+        echo "Informe: e2e-report/playwright-report/index.html"
+        exit $$status
+    volumes:
+      - ${FRONTEND_PATH:-../frontend}:/src:ro,z
+      - ./e2e-report:/out:z
+    depends_on:
+      frontend:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully

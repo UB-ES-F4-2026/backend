@@ -1,13 +1,14 @@
 """Investment opportunities offered by the platform."""
 from datetime import datetime
 from enum import Enum
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     DateTime,
     Enum as SqlEnum,
     ForeignKey,
-    Integer,
     String,
     Text,
     func,
@@ -18,6 +19,9 @@ from app.database import Base
 from app.models.business_opportunity import BusinessOpportunity
 from app.models.promoting_entity import PromotingEntity
 from app.models.real_estate_opportunity import RealEstateOpportunity
+
+if TYPE_CHECKING:
+    from app.models.opportunity_image import OpportunityImage
 
 
 class OpportunityType(str, Enum):
@@ -80,10 +84,11 @@ class Opportunity(Base):
     description: Mapped[str] = mapped_column(Text)
     location: Mapped[str] = mapped_column(String(255))
     cover_image_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
-    target_amount_cents: Mapped[int] = mapped_column(Integer)
-    committed_cents: Mapped[int] = mapped_column(Integer, default=0)
+    # Imports en BigInteger: un enter de 32 bits no passa de 21.474.836,47 €.
+    target_amount_cents: Mapped[int] = mapped_column(BigInteger)
+    committed_cents: Mapped[int] = mapped_column(BigInteger, default=0)
     # Nulable: los registros existentes no la tienen y no se inventan valores.
-    minimum_contribution_cents: Mapped[int | None] = mapped_column(Integer)
+    minimum_contribution_cents: Mapped[int | None] = mapped_column(BigInteger)
     deadline: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     date_published: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -102,6 +107,12 @@ class Opportunity(Base):
     # Datos específicos de la categoría inmobiliaria, si los tiene.
     real_estate: Mapped[RealEstateOpportunity | None] = relationship(
         back_populates="opportunity", cascade="all, delete-orphan", passive_deletes=True
+    )
+    images: Mapped[list["OpportunityImage"]] = relationship(
+        back_populates="opportunity",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="OpportunityImage.position",
     )
     business: Mapped[BusinessOpportunity | None] = relationship(
         back_populates="opportunity", cascade="all, delete-orphan", passive_deletes=True

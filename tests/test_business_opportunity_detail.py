@@ -30,6 +30,7 @@ DETAIL_KEYS = {
     "description",
     "location",
     "cover_image_url",
+    "images",
     "target_amount_cents",
     "committed_cents",
     "minimum_contribution_cents",
@@ -104,7 +105,7 @@ class BusinessOpportunityDetailTest(unittest.TestCase):
         )
         if with_business:
             opportunity.business = BusinessOpportunity(
-                sector=BusinessSector.FINTECH,
+                sector=BusinessSector.TECHNOLOGY,
                 phase=BusinessPhase.GROWTH,
                 pre_investment_valuation_cents=270_000_000,
             )
@@ -135,10 +136,11 @@ class BusinessOpportunityDetailTest(unittest.TestCase):
         self.assertEqual(body["title"], "Ronda de finançament")
         self.assertEqual(body["location"], "Barcelona")
         self.assertEqual(body["cover_image_url"], "https://example.com/company.png")
+        self.assertEqual(body["images"], [])
         self.assertEqual(body["target_amount_cents"], 30_000_000)
         self.assertEqual(body["committed_cents"], 10_000_000)
         self.assertEqual(body["minimum_contribution_cents"], 100_00)
-        self.assertEqual(body["business"]["sector"], "fintech")
+        self.assertEqual(body["business"]["sector"], "technology")
         self.assertEqual(body["business"]["phase"], "growth")
         self.assertEqual(body["business"]["pre_investment_valuation_cents"], 270_000_000)
         self.assertEqual(Decimal(body["business"]["equity_offered"]), Decimal("10"))
@@ -190,8 +192,8 @@ class BusinessOpportunityDetailTest(unittest.TestCase):
                 date_published=datetime.now(UTC),
             )
             opportunity.business = BusinessOpportunity(
-                sector=BusinessSector.OTHER,
-                phase=BusinessPhase.PRE_SEED,
+                sector=BusinessSector.OTHER_SERVICES,
+                phase=BusinessPhase.IDEA,
                 pre_investment_valuation_cents=0,
             )
             db.add(opportunity)
@@ -222,26 +224,19 @@ class BusinessOpportunityDetailTest(unittest.TestCase):
         self.assertEqual(
             sectors,
             [
-                "fintech",
+                "technology",
                 "industry",
-                "saas",
+                "food_and_beverage",
+                "commerce",
                 "health",
-                "biotech",
-                "cleantech",
-                "agritech",
-                "foodtech",
-                "d2c",
-                "education",
-                "media",
-                "tourism",
-                "logistic",
-                "ai",
-                "other",
+                "energy",
+                "tourism_and_leisure",
+                "other_services",
             ],
         )
-        self.assertEqual(phases, ["pre_seed", "seed", "early", "growth", "late"])
+        self.assertEqual(phases, ["idea", "launch", "growth", "consolidated"])
 
-    def test_sector_migration_preserves_and_maps_existing_values(self):
+    def test_business_enum_migration_maps_existing_values(self):
         database = "business_sector_migration_" + uuid4().hex
         with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
             connection.execute(text(f'CREATE DATABASE "{database}"'))
@@ -312,7 +307,14 @@ class BusinessOpportunityDetailTest(unittest.TestCase):
                         "ORDER BY opportunity_id"
                     )
                 ).all()
-            self.assertEqual(upgraded_sectors, ["health", "education", "fintech"])
+                upgraded_phases = connection.scalars(
+                    text(
+                        "SELECT phase::text FROM business_opportunities "
+                        "ORDER BY opportunity_id"
+                    )
+                ).all()
+            self.assertEqual(upgraded_sectors, ["health", "technology", "technology"])
+            self.assertEqual(upgraded_phases, ["launch", "launch", "launch"])
 
             migrate(command.downgrade, "0f4afe25bff8")
             with isolated.connect() as connection:
@@ -322,10 +324,17 @@ class BusinessOpportunityDetailTest(unittest.TestCase):
                         "ORDER BY opportunity_id"
                     )
                 ).all()
+                downgraded_phases = connection.scalars(
+                    text(
+                        "SELECT phase::text FROM business_opportunities "
+                        "ORDER BY opportunity_id"
+                    )
+                ).all()
             self.assertEqual(
                 downgraded_sectors,
-                ["healthtech", "edtech", "fintech"],
+                ["healthtech", "fintech", "fintech"],
             )
+            self.assertEqual(downgraded_phases, ["seed", "seed", "seed"])
         finally:
             isolated.dispose()
             with engine.connect().execution_options(

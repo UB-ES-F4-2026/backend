@@ -1,0 +1,8 @@
+# Anàlisi estàtica del backend (TR06).
+# Regles fixades explícitament (les que Ruff activava per defecte abans de la 0.17):
+# així el resultat no canvia en actualitzar Ruff. Versió fixada a ci.yml i CI.md.
+target-version = "py313"
+extend-exclude = ["alembic/versions"]
+
+[lint]
+select = ["E4", "E7", "E9", "F"]

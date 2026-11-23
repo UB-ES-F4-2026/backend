@@ -1,4 +1,4 @@
-"""Comprometre una aportació immobiliària (US03.1.1) a través de l'API."""
+"""Comprometre una aportació immobiliària (US03.1.1) o una inversió empresarial (US03.1.2)."""
 import threading
 import unittest
 from concurrent.futures import ThreadPoolExecutor
@@ -12,9 +12,15 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import sessionmaker
 
+from app.core.commitments import estimated_equity_percent
 from app.core.security import SESSION_COOKIE, generate_session_token, hash_session_token
 from app.database import engine, get_db
 from app.main import app
+from app.models.business_opportunity import (
+    BusinessOpportunity,
+    BusinessPhase,
+    BusinessSector,
+)
 from app.models.commitment import Commitment
 from app.models.opportunity import Opportunity, OpportunityStatus, OpportunityType
 from app.models.promoting_entity import PromotingEntity
@@ -34,12 +40,17 @@ INSUFFICIENT_FUNDS = "Insufficient funds"
 NOT_ACCEPTED = "Opportunity no longer accepts this contribution"
 # Marge perquè un fil acabi; si se supera, el test falla en lloc de penjar-se.
 THREAD_TIMEOUT = 30
+PRE_INVESTMENT_VALUATION_CENTS = 2_700_000_00
 
 
-class RealEstateCommitmentsTestCase(unittest.TestCase):
+class CommitmentsApiTestCase(unittest.TestCase):
+    """Base de dades i dades comunes; cada subclasse fixa el tipus d'oportunitat."""
+
+    opportunity_type = OpportunityType.REAL_ESTATE
+
     @classmethod
     def setUpClass(cls):
-        cls.database = "real_estate_commitments_test_" + uuid4().hex
+        cls.database = "opportunity_commitments_test_" + uuid4().hex
         with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
             connection.execute(text(f'CREATE DATABASE "{cls.database}"'))
         # Les proves de concurrència obren una connexió per petició simultània.
@@ -96,10 +107,11 @@ class RealEstateCommitmentsTestCase(unittest.TestCase):
             db.commit()
             return user.id, f"{SESSION_COOKIE}={token}"
 
-    def create_opportunity(self, real_estate=True, **changes) -> int:
+    def create_opportunity(self, specific_data=True, **changes) -> int:
+        """Crea una oportunitat del tipus de la classe, amb les dades del seu tipus."""
         values = {
             "user_id": self.promoter_id,
-            "type": OpportunityType.REAL_ESTATE,
+            "type": self.opportunity_type,
             "status": OpportunityStatus.PUBLISHED,
             "title": "Rehabilitació d'un edifici",
             "description": "Descripció.",
@@ -112,7 +124,13 @@ class RealEstateCommitmentsTestCase(unittest.TestCase):
         }
         values.update(changes)
         opportunity = Opportunity(**values)
-        if real_estate:
+        if specific_data and self.opportunity_type == OpportunityType.EQUITY:
+            opportunity.business = BusinessOpportunity(
+                sector=BusinessSector.TECHNOLOGY,
+                phase=BusinessPhase.GROWTH,
+                pre_investment_valuation_cents=PRE_INVESTMENT_VALUATION_CENTS,
+            )
+        elif specific_data:
             opportunity.real_estate = RealEstateOpportunity(
                 purpose=RealEstatePurpose.ACQUISITION_AND_RENOVATION,
                 intended_use=IntendedUse.RENTAL,
@@ -148,13 +166,27 @@ class RealEstateCommitmentsTestCase(unittest.TestCase):
                 db.scalars(select(Commitment).filter_by(**filters).order_by(Commitment.id))
             )
 
+    def assert_estimated_equity(self, commitment: dict, amount_cents: int, target_cents: int):
+        """Les inversions empresarials porten participació estimada; les aportacions, no."""
+        if self.opportunity_type == OpportunityType.REAL_ESTATE:
+            self.assertIsNone(commitment["estimated_equity"])
+            return
+        self.assertEqual(
+            Decimal(commitment["estimated_equity"]),
+            estimated_equity_percent(
+                amount_cents,
+                pre_investment_valuation_cents=PRE_INVESTMENT_VALUATION_CENTS,
+                target_amount_cents=target_cents,
+            ),
+        )
+
     def assert_nothing_changed(self, user_id, opportunity_id, available_cents, committed_cents):
         self.assertEqual(self.balances(user_id), (available_cents, 0))
         self.assertEqual(self.opportunity_committed(opportunity_id), committed_cents)
         self.assertEqual(self.commitments(opportunity_id=opportunity_id), [])
 
 
-class CommitContributionTest(RealEstateCommitmentsTestCase):
+class CommitContributionTest(CommitmentsApiTestCase):
     def test_commits_the_contribution_and_returns_the_updated_figures(self):
         user_id, cookie = self.create_user(250_00)
         opportunity_id = self.create_opportunity()
@@ -174,8 +206,10 @@ class CommitContributionTest(RealEstateCommitmentsTestCase):
                 "opportunity_id": opportunity_id,
                 "amount_cents": 100_00,
                 "created_at": body["commitment"]["created_at"],
+                "estimated_equity": body["commitment"]["estimated_equity"],
             },
         )
+        self.assert_estimated_equity(body["commitment"], 100_00, 72_000_00)
         self.assertEqual(datetime.fromisoformat(body["commitment"]["created_at"]), stored.created_at)
         self.assertEqual(
             body["opportunity"],
@@ -257,7 +291,7 @@ class CommitContributionTest(RealEstateCommitmentsTestCase):
         self.assertEqual(response.status_code, 201)
 
 
-class CommitContributionRejectionTest(RealEstateCommitmentsTestCase):
+class CommitContributionRejectionTest(CommitmentsApiTestCase):
     def test_requires_an_active_session(self):
         user_id, _ = self.create_user(250_00)
         opportunity_id = self.create_opportunity()
@@ -379,12 +413,13 @@ class CommitContributionRejectionTest(RealEstateCommitmentsTestCase):
                 self.assertEqual(response.json()["detail"], NOT_ACCEPTED)
                 self.assert_nothing_changed(user_id, opportunity_id, 250_00, committed_cents)
 
-    def test_opportunities_that_are_not_public_real_estate_are_not_found(self):
+    def test_opportunities_that_are_not_public_are_not_found(self):
         user_id, cookie = self.create_user(250_00)
         hidden = {
             "draft": {"status": OpportunityStatus.DRAFT, "date_published": None},
             "rejected": {"status": OpportunityStatus.REJECTED, "date_published": None},
-            "equity": {"type": OpportunityType.EQUITY, "real_estate": False},
+            # Sense les dades del seu tipus tampoc té detall públic.
+            "without specific data": {"specific_data": False},
         }
         for reason, changes in hidden.items():
             with self.subTest(reason=reason):
@@ -412,7 +447,7 @@ class CommitContributionRejectionTest(RealEstateCommitmentsTestCase):
         self.assertEqual(self.balances(user_id), (150_00, 100_00))
 
 
-class CommitContributionConcurrencyTest(RealEstateCommitmentsTestCase):
+class CommitContributionConcurrencyTest(CommitmentsApiTestCase):
     def simultaneous(self, requests: list[tuple[int, str, int]]) -> list:
         """Envia totes les peticions alhora, cadascuna amb el seu client."""
         barrier = threading.Barrier(len(requests))
@@ -484,6 +519,102 @@ class CommitContributionConcurrencyTest(RealEstateCommitmentsTestCase):
             else:
                 self.assertEqual(response.json()["detail"], INSUFFICIENT_FUNDS)
                 self.assertEqual(self.opportunity_committed(opportunity_id), 45_000_00)
+
+
+class CommitInvestmentTest(CommitContributionTest):
+    """Els mateixos casos sobre una oportunitat empresarial."""
+
+    opportunity_type = OpportunityType.EQUITY
+
+
+class CommitInvestmentRejectionTest(CommitContributionRejectionTest):
+    opportunity_type = OpportunityType.EQUITY
+
+
+class CommitInvestmentConcurrencyTest(CommitContributionConcurrencyTest):
+    opportunity_type = OpportunityType.EQUITY
+
+
+class EstimatedEquityTest(CommitmentsApiTestCase):
+    opportunity_type = OpportunityType.EQUITY
+
+    def test_trello_reference_scenario(self):
+        # Valoració prèvia de 2.700.000 € i objectiu de 300.000 €, amb 184.500 € compromesos.
+        user_id, cookie = self.create_user(1_500_00)
+        opportunity_id = self.create_opportunity(
+            target_amount_cents=300_000_00, committed_cents=184_500_00
+        )
+
+        response = self.commit(opportunity_id, cookie, {"amount_cents": 1_000_00})
+
+        self.assertEqual(response.status_code, 201)
+        body = response.json()
+        estimated_equity = Decimal(body["commitment"]["estimated_equity"])
+        # 1.000 / 3.000.000 = 0,0333… %, que la presentació mostra com a 0,033 %.
+        self.assertEqual(estimated_equity.quantize(Decimal("0.001")), Decimal("0.033"))
+        self.assertEqual(body["opportunity"]["committed_cents"], 185_500_00)
+        self.assertEqual(
+            body["wallet"],
+            {"available_cents": 500_00, "committed_cents": 1_000_00, "currency": "eur"},
+        )
+        self.assertEqual(self.balances(user_id), (500_00, 1_000_00))
+
+    def test_investing_the_whole_target_gets_the_equity_offered(self):
+        user_id, cookie = self.create_user(300_000_00)
+        opportunity_id = self.create_opportunity(
+            target_amount_cents=300_000_00, committed_cents=0
+        )
+        detail = self.client.get(f"/api/opportunities/{opportunity_id}").json()
+
+        response = self.commit(opportunity_id, cookie, {"amount_cents": 300_000_00})
+
+        self.assertEqual(response.status_code, 201)
+        estimated_equity = Decimal(response.json()["commitment"]["estimated_equity"])
+        self.assertEqual(estimated_equity, Decimal(detail["business"]["equity_offered"]))
+        self.assertEqual(estimated_equity, Decimal("10"))
+
+    def test_estimated_equity_is_not_stored_nor_changed_by_later_investments(self):
+        # Depèn de l'import, la valoració i l'objectiu, no del capital ja compromès.
+        _, first_cookie = self.create_user(1_000_00)
+        _, second_cookie = self.create_user(1_000_00)
+        opportunity_id = self.create_opportunity(
+            target_amount_cents=300_000_00, committed_cents=0
+        )
+
+        first = self.commit(opportunity_id, first_cookie, {"amount_cents": 1_000_00})
+        second = self.commit(opportunity_id, second_cookie, {"amount_cents": 1_000_00})
+
+        self.assertEqual(
+            first.json()["commitment"]["estimated_equity"],
+            second.json()["commitment"]["estimated_equity"],
+        )
+
+
+class EstimatedEquityCalculationTest(unittest.TestCase):
+    def equity(self, amount_cents: int, valuation_cents: int, target_cents: int) -> Decimal:
+        return estimated_equity_percent(
+            amount_cents,
+            pre_investment_valuation_cents=valuation_cents,
+            target_amount_cents=target_cents,
+        )
+
+    def test_amount_over_pre_investment_valuation_plus_target(self):
+        # La referència de la issue: 1.000 € sobre 2.700.000 € + 300.000 € és un 0,033 %.
+        reference = self.equity(1_000_00, 2_700_000_00, 300_000_00)
+        self.assertEqual(reference.quantize(Decimal("0.001")), Decimal("0.033"))
+        self.assertEqual(self.equity(300_000_00, 2_700_000_00, 300_000_00), Decimal("10"))
+        self.assertEqual(self.equity(50_000_00, 150_000_00, 50_000_00), Decimal("25"))
+
+    def test_is_proportional_to_the_amount(self):
+        single = self.equity(1_000_00, 2_700_000_00, 300_000_00)
+        self.assertEqual(self.equity(3_000_00, 2_700_000_00, 300_000_00), Decimal("0.1"))
+        self.assertLess(single, self.equity(1_000_01, 2_700_000_00, 300_000_00))
+
+    def test_is_exact_to_the_cent(self):
+        # Un cèntim sobre 3.000.000 €: sense arrodoniments intermedis.
+        self.assertEqual(
+            self.equity(1, 2_700_000_00, 300_000_00), Decimal(1) / Decimal(3_000_000)
+        )
 
 
 if __name__ == "__main__":
