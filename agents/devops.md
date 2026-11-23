@@ -7,26 +7,31 @@ Manténs la CI, les imatges, el Compose de producció i el desplegament al servi
 - Backend FastAPI + PostgreSQL 17 + Alembic; frontend React/Vite servit per Caddy, construït al repositori `frontend`.
 - Servidor compartit (Hetzner) accessible per SSH. Host, usuari, port i ruta viuen a les variables de GitHub Actions `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_PORT`, `DEPLOY_PATH` i al secret `DEPLOY_SSH_KEY`: cap d'aquests valors s'escriu en fitxers del repositori.
 - Projecte Compose de producció `fintech-prod` a `/app/fintech` del servidor: `compose.production.yaml` + `.env.production` (imatges per digest i credencials). Un worker, frontend estàtic, sense pgAdmin ni builds al servidor. Els `mem_limit` del Compose responen a un pressupost d'uns 512 MB: és un objectiu a mesurar, no memòria garantida.
+- Projecte Compose de staging `fintech-staging` a `/app/fintech-staging`: `compose.production.yaml` + l'override `compose.staging.yaml` (BD a `127.0.0.1:5434` per a túnels SSH) + `.env.staging` (mateixes claus que producció, credencials pròpies i `WEB_PORT=8082`).
 - `compose.yaml` és només de desenvolupament. `compose.ci.yaml` i `compose.production-ci.yaml` són entorns efímers de CI.
 - La imatge de desenvolupament (`Dockerfile`) aplica migracions en arrencar via `app/start.py`. La de producció (`Dockerfile.production`) **no**: les migracions són el servei `migrate` (perfil `tools`), que el desplegament executa abans d'arrencar el backend. Un reinici en producció no migra res.
 - Cap Kubernetes, blue/green ni servei addicional sense una necessitat mesurada.
 
 ## Com es desplega avui
 
-1. Push a `main` dispara `.github/workflows/ci.yml`: tests en entorn de desenvolupament i de producció (`required-checks`).
-2. `publish` construeix `Dockerfile.production`, la prova amb `compose.production-ci.yaml`, la publica a GHCR etiquetada amb el SHA del commit i exposa el digest.
-3. `deploy` (només si la variable `DEPLOY_ENABLED` és `true`): `scripts/deploy-ci.sh` valida les entrades i executa per SSH `python3 /app/fintech/deploy.py <component> <digest> <sha> <run>`.
-4. `scripts/deploy.py`, instal·lat al servidor, pren el lock `.deploy.lock`, es nega si existeix `DEPLOYMENT_BLOCKED.json`, comprova que els serveis són del projecte i estan sans, fa `pg_dump` (component backend), executa `migrate`, aixeca el servei, comprova `/`, `/api/health` i `/api/opportunities`, i deixa el registre a `releases/<id>/release.json` i `release-current.json`. No hi ha rollback automàtic: un desplegament fallit deixa el marcador i s'inspecciona a mà.
+1. Cada push dispara `.github/workflows/ci.yml`: tests en entorn de desenvolupament i de producció (`required-checks`).
+2. `publish` (`release/*` i `hotfix/*`) construeix `Dockerfile.production`, la prova amb `compose.production-ci.yaml`, la publica a GHCR etiquetada amb el SHA del commit i exposa el digest.
+   `promote` (`main`) no construeix res: comprova que `main` és idèntic a la branca fusionada (`HEAD^2`) i agafa el digest publicat per a aquell commit. Si la imatge no existeix o el codi no coincideix, no es desplega res. Si la PR es fusiona abans que acabi la CI de la branca, cal tornar a executar el workflow de `main` quan acabi.
+3. `deploy` (`main`, només si la variable `DEPLOY_ENABLED` és `true`), amb el digest de `promote`: `scripts/deploy-ci.sh` valida les entrades i executa per SSH `python3 /app/fintech/deploy.py <component> <digest> <sha> <run>`.
+   `deploy-staging` (`release/*`, només si `STAGING_DEPLOY_ENABLED` és `true`): el mateix script amb `DEPLOY_ENVIRONMENT=staging` executa `python3 /app/fintech-staging/deploy.py --environment staging …`.
+4. `scripts/deploy.py`, instal·lat a la carpeta de cada entorn, pren el lock `.deploy.lock`, es nega si existeix `DEPLOYMENT_BLOCKED.json`, comprova que els serveis són del projecte i estan sans, fa `pg_dump` (component backend), executa `migrate`, aixeca el servei, comprova `/`, `/api/health` i `/api/opportunities`, i deixa el registre a `releases/<id>/release.json` i `release-current.json`. No hi ha rollback automàtic: un desplegament fallit deixa el marcador i s'inspecciona a mà.
 5. `deploy-check.yml` (manual) fa un preflight SSH de només lectura.
 6. `scripts/first-deploy.sh` és només per a la primera instal·lació, en un servidor sense `.env.production`.
 
 El frontend segueix el mateix esquema des del seu repositori: vegeu `frontend/agents/devops.md`.
 
+La CI no copia fitxers al servidor. Quan canvien `scripts/deploy.py`, `compose.production.yaml` o `compose.staging.yaml`, cal instal·lar-los a mà a la carpeta de cada entorn (primer a staging). Abans d'activar `STAGING_DEPLOY_ENABLED`, l'usuari de `DEPLOY_USER` ha de poder llegir i escriure a `/app/fintech-staging`.
+
 ## Subrols
 
 ### Desplegament
 
-Preparar o canviar CI, imatges, Compose productiu i scripts. Abans de desplegar: revisió exacta provada, versió dels dos components, migracions pendents. Després: release anterior, canvis, comprovacions i resultat. Es publica només des de `main` amb CI verda; una acció reversible sobre codi no autoritza per si sola un desplegament.
+Preparar o canviar CI, imatges, Compose productiu i scripts. Abans de desplegar: revisió exacta provada, versió dels dos components, migracions pendents. Després: release anterior, canvis, comprovacions i resultat. Es publica només des de `release/*` i `hotfix/*` amb CI verda, i producció només rep imatges publicades així; una acció reversible sobre codi no autoritza per si sola un desplegament.
 
 ### Incidents
 

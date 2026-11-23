@@ -74,3 +74,15 @@ sh scripts/run-e2e.sh
 ### Sobre el entorno de desarrollo
 
 Para probar los E2E contra el entorno levantado con `compose.yaml`, sigue [agents/backend.md](agents/backend.md#validació). El seed escribe en la base de datos de desarrollo de forma permanente y solo puede ejecutarse una vez, y hace falta Python con dependencias, Node y Chromium en el host.
+
+## Release y staging
+
+Flujo: se crea `release/x.y` desde `dev` y, con cada push a esa rama, `ci.yml` pasa los tests, publica la imagen y la despliega en staging (job `deploy-staging`, solo si la variable `STAGING_DEPLOY_ENABLED` es `true`). Las correcciones de la release se hacen con PR hacia `release/x.y` y se vuelven a llevar a `dev`. Al fusionar `release/x.y` en `main`, la CI no vuelve a construir la imagen: despliega en producción la misma que se probó en staging (job `promote`). Los hotfix siguen el mismo camino desde `hotfix/*`, sin pasar por staging. Las PR hacia `main` se fusionan con «Create a merge commit»: con squash o rebase no se despliega nada.
+
+Staging es el proyecto Compose `fintech-staging` en `/app/fintech-staging` del servidor: `compose.production.yaml` con el override `compose.staging.yaml` y su propio `.env.staging`. No comparte contenedores, volúmenes, base de datos ni credenciales con producción. Los detalles del despliegue y los pasos manuales en el servidor están en [agents/devops.md](agents/devops.md).
+
+Para abrirlo desde tu ordenador, con un túnel SSH (la web y la API quedan en http://localhost:8082):
+
+```bash
+ssh -N -L 8082:127.0.0.1:8082 <usuario>@<servidor>
+```
