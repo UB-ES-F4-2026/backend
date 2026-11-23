@@ -5,7 +5,14 @@ from fastapi import FastAPI, HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.api.routes import auth, opportunities, promoting_entity, wallet
+from app.api.routes import (
+    auth,
+    commitments,
+    opportunities,
+    promoting_entity,
+    wallet,
+    webhooks,
+)
 from app.database import engine
 
 
@@ -17,9 +24,13 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Fintech API", version="0.1.0", lifespan=lifespan, docs_url="/api/docs", openapi_url="/api/openapi.json")
 app.include_router(auth.router)
+app.include_router(commitments.router)
+app.include_router(commitments.me_router)
 app.include_router(opportunities.router)
+app.include_router(opportunities.me_router)
 app.include_router(promoting_entity.router)
 app.include_router(wallet.router)
+app.include_router(webhooks.router)
 
 
 @app.get("/api/health", tags=["health"])

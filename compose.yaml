@@ -25,7 +25,10 @@ services:
   backend:
     build:
       context: .
-    environment: *database-environment
+    environment:
+      <<: *database-environment
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
     depends_on:
       db:
         condition: service_healthy
@@ -36,6 +39,7 @@ services:
       # Keep generated revisions in the repository, not only in the container.
       - ./alembic:/app/alembic
       - ./alembic.ini:/app/alembic.ini:ro
+      - media_data:/app/media
     init: true
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
@@ -61,6 +65,7 @@ services:
       - "127.0.0.1:${FRONTEND_PORT:?Falta FRONTEND_PORT - configura backend/.env a partir de .env.example}:5173"
     environment:
       API_PROXY_TARGET: http://backend:8000
+      VITE_STRIPE_PUBLISHABLE_KEY: ${VITE_STRIPE_PUBLISHABLE_KEY:-}
     depends_on:
       backend:
         condition: service_healthy
@@ -115,3 +120,4 @@ services:
 volumes:
   postgres_data:
   pgadmin_data:
+  media_data:

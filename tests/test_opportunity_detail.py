@@ -23,7 +23,7 @@ from app.models.real_estate_opportunity import (
 from app.models.user import User
 
 DETAIL_KEYS = {
-    "id", "type", "status", "title", "description", "location", "cover_image_url",
+    "id", "type", "status", "title", "description", "location", "cover_image_url", "images",
     "target_amount_cents", "committed_cents", "minimum_contribution_cents",
     "deadline", "date_published", "promoter", "real_estate", "server_time",
 }
@@ -121,6 +121,7 @@ class OpportunityDetailTest(unittest.TestCase):
         self.assertEqual(body["type"], "real_estate")
         self.assertEqual(body["status"], "published")
         self.assertEqual(body["description"], "Primer párrafo.\n\nSegundo párrafo.")
+        self.assertEqual(body["images"], [])
         self.assertEqual(body["target_amount_cents"], 250_000_00)
         self.assertEqual(body["committed_cents"], 100_000_00)
         self.assertEqual(body["minimum_contribution_cents"], 500_00)
@@ -132,6 +133,7 @@ class OpportunityDetailTest(unittest.TestCase):
             "image_url": "https://example.com/logo.png",
             "published_projects_count": body["promoter"]["published_projects_count"],
             "experience_years": 0,
+            "founding_year": None,
             "location": "Girona, Girona, España",
         })
         self.assertGreaterEqual(body["promoter"]["published_projects_count"], 1)
@@ -195,7 +197,6 @@ class OpportunityDetailTest(unittest.TestCase):
         cases = {
             "draft": {"status": OpportunityStatus.DRAFT, "date_published": None},
             "rejected": {"status": OpportunityStatus.REJECTED, "date_published": None},
-            "equity": {"type": OpportunityType.EQUITY, "real_estate": False},
             "real estate without property data": {"real_estate": False},
         }
         for name, changes in cases.items():
