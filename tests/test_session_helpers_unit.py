@@ -4,6 +4,7 @@ import unittest
 
 from app.api.deps import expired_session_exception
 from app.core.security import SESSION_COOKIE
+from app.model_registry import load_models
 from app.models.session import SESSION_IDLE_TIMEOUT, UserSession, new_expiry
 
 
@@ -17,6 +18,7 @@ class SessionExpiryTest(unittest.TestCase):
         self.assertLessEqual(expiry, after + SESSION_IDLE_TIMEOUT)
 
     def test_touch_replaces_the_existing_expiry(self):
+        load_models()
         session = UserSession(
             token="a" * 64,
             user_id=1,

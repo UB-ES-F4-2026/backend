@@ -52,12 +52,12 @@ class AuthSchemaTest(unittest.TestCase):
 
 class FinancialSchemaTest(unittest.TestCase):
     def test_balance_requires_a_safe_non_negative_integer_amount(self):
-        self.assertEqual(BalanceRead(available_cents=0).currency, "eur")
+        self.assertEqual(BalanceRead(available_cents=0, committed_cents=0).currency, "eur")
 
         for amount_cents in (-1, MAX_SAFE_CENTS + 1):
             with self.subTest(amount_cents=amount_cents):
                 with self.assertRaises(ValidationError):
-                    BalanceRead(available_cents=amount_cents)
+                    BalanceRead(available_cents=amount_cents, committed_cents=0)
 
     def test_opportunity_requires_positive_target_and_non_negative_committed_amount(self):
         valid_opportunity = {
@@ -75,7 +75,7 @@ class FinancialSchemaTest(unittest.TestCase):
         ):
             with self.subTest(changes=changes):
                 with self.assertRaises(ValidationError):
-                    OpportunityCreate(**valid_opportunity, **changes)
+                    OpportunityCreate(**{**valid_opportunity, **changes})
 
 
 class PromotingEntitySchemaTest(unittest.TestCase):

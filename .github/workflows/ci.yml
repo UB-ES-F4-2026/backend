@@ -41,8 +41,10 @@ jobs:
         run: docker build --tag backend-ci .
       - name: Run unit tests with branch coverage
         run: |
-          docker create --name backend-unit-coverage --entrypoint sh backend-ci \
-            -c "coverage run --branch --source=app.core,app.schemas,app.model_registry -m unittest discover -s tests -p 'test_name_search.py' -v && coverage run --append -m unittest discover -s tests -p 'test_*_unit.py' -v && coverage report -m && coverage xml -o /tmp/coverage.xml"
+          docker create --name backend-unit-coverage --entrypoint sh \
+            --env POSTGRES_DB=fintech_unit --env POSTGRES_USER=fintech_unit \
+            --env POSTGRES_PASSWORD=unit_disposable_password --env DB_HOST=127.0.0.1 --env DB_PORT=5432 backend-ci \
+            -c "COVERAGE_FILE=/tmp/.coverage coverage run --branch --source=app.core,app.schemas,app.model_registry -m unittest discover -s tests -p 'test_name_search.py' -v && COVERAGE_FILE=/tmp/.coverage coverage run --branch --append -m unittest discover -s tests -p 'test_*_unit.py' -v && COVERAGE_FILE=/tmp/.coverage coverage report -m && COVERAGE_FILE=/tmp/.coverage coverage xml -o /tmp/coverage.xml"
           docker start -a backend-unit-coverage
           docker cp backend-unit-coverage:/tmp/coverage.xml coverage-backend.xml
       - name: Upload backend coverage report
