@@ -91,6 +91,8 @@ Regles:
 - Cada camp del payload existeix al `*Create` de l'endpoint: Pydantic descarta en silenci els camps desconeguts i la dada no arriba a la BD.
 - Dates relatives al moment d'execució (`datetime.now(UTC) + timedelta(...)`): una data fixa caduca i l'oportunitat surt del catàleg. Fins i tot si no s'ha fet cap modificació als models d'oportunitat, caldrà mentenir dates actualitzades.
 - Una dada que no es pot crear atura l'script amb error (`raise_for_status()` o excepció), perquè el CI falli al seed i no més tard a Playwright.
+- El saldo s'ingressa per la ruta de producció `POST /api/webhooks/stripe`, amb un `payment_intent.succeeded` signat amb el `STRIPE_WEBHOOK_SECRET` de l'entorn. L'entorn E2E (`compose.e2e.yaml` i els dos workflows `e2e-playwright.yml`) el defineix amb un valor d'un sol ús, `whsec_e2e_only_not_a_real_secret`, que també fan servir els tests (`../frontend/e2e/support/wallet.ts`). Aquest valor no va mai a staging ni a producció. Si el backend no té el secret configurat, el seed s'atura amb un missatge que ho explica.
+- Els comptes del bloc determinista (`capital.e2e`, `inversora.e2e`, `promotora.e2e`, `promotora.flujos.e2e`) són de només lectura per als tests: un flux que modifica dades registra el seu propi usuari i s'ingressa el saldo que necessita. Cada oportunitat de `promotora.flujos.e2e` pertany a un sol flux, i les «casi finançades» tenen tres bessones, una per intent. El capital d'aquest bloc surt de compromisos reals fets per l'API, i el seed acaba amb una autocomprovació (`verify_e2e_data`) que falla si les dades no són les que esperen els tests.
 
 Requeriments tècnics:
 
@@ -134,4 +136,4 @@ npm ci && npx playwright install chromium
 PLAYWRIGHT_BASE_URL=http://127.0.0.1:<FRONTEND_PORT> npx playwright test --workers=1
 ```
 
-Aquesta via escriu les dades del seed a la BD de desenvolupament de forma permanent, i el seed suposa una BD sense les seves dades: si l'usuari `inyector@fintech.com` ja existeix, tornar-lo a executar falla o duplica les oportunitats i trenca els recomptes dels E2E. Demana a l'usuari abans d'utilitzar-la. Les PR de tasca cap a `feat/US…` no disparen el workflow E2E, així que la prova local és l'única abans de la PR de `feat` a `dev`; en aquesta, el comentari `Resultados E2E de Playwright` ha d'estar tot verd.
+Aquesta via escriu les dades del seed a la BD de desenvolupament de forma permanent, i el seed suposa una BD sense les seves dades: si ja s'hi ha executat, s'atura al primer compte que troba creat. A més, el backend ha de tenir `STRIPE_WEBHOOK_SECRET` al `.env` (el seed el llegeix d'allà per signar els ingressos); si és buit, el seed s'atura abans d'ingressar saldo. Demana a l'usuari abans d'utilitzar-la. Les PR de tasca cap a `feat/US…` no disparen el workflow E2E, així que la prova local és l'única abans de la PR de `feat` a `dev`; en aquesta, el comentari `Resultados E2E de Playwright` ha d'estar tot verd.

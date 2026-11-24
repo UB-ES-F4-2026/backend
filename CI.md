@@ -70,10 +70,11 @@ sh scripts/run-e2e.sh
 - El informe queda en `e2e-report/playwright-report/index.html`, también si los tests fallan.
 - Usa el frontend de `../frontend`. Para probar otra carpeta o rama: `FRONTEND_PATH=/ruta/al/frontend sh scripts/run-e2e.sh`.
 - En PowerShell, el equivalente está en el [README](README.md#11-tests-e2e-amb-playwright).
+- El backend de este entorno (y el de los workflows `e2e-playwright.yml`) arranca con `STRIPE_WEBHOOK_SECRET=whsec_e2e_only_not_a_real_secret`, un valor desechable que no es un secreto real: el seed y los tests ingresan saldo enviando al webhook de Stripe un pago firmado con él. No debe usarse en staging ni en producción.
 
 ### Sobre el entorno de desarrollo
 
-Para probar los E2E contra el entorno levantado con `compose.yaml`, sigue [agents/backend.md](agents/backend.md#validació). El seed escribe en la base de datos de desarrollo de forma permanente y solo puede ejecutarse una vez, y hace falta Python con dependencias, Node y Chromium en el host.
+Para probar los E2E contra el entorno levantado con `compose.yaml`, sigue [agents/backend.md](agents/backend.md#validació). El seed escribe en la base de datos de desarrollo de forma permanente y solo puede ejecutarse una vez, necesita que el backend tenga `STRIPE_WEBHOOK_SECRET` en el `.env` para ingresar saldo, y hace falta Python con dependencias, Node y Chromium en el host.
 
 ## Release y staging
 
