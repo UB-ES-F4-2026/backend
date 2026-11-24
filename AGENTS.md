@@ -60,6 +60,15 @@ PostgreSQL temporal reals. Cada canvi de ruta cobreix èxit, autenticació o
 autorització, dades invàlides i persistència o rollback segons correspongui.
 No simulis PostgreSQL ni converteixis un recorregut HTTP en prova unitària.
 
+## Proves funcionals
+
+Els criteris d'acceptació es comproven amb els fluxos de Playwright del
+repositori del frontend, contra aquest backend i les dades del seed. Abans de
+canviar un esquema `*Create`, un model, una migració o una regla de
+visibilitat, llegeix [`docs/qa/FUNCTIONAL_TESTING.md`](docs/qa/FUNCTIONAL_TESTING.md):
+el seed s'actualitza al mateix canvi i `sh scripts/run-e2e.sh` ha de quedar
+en verd.
+
 ## Flux de treball
 
 1. Comprova l'estat del repositori i preserva els canvis dels altres col·laboradors.
