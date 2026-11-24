@@ -59,19 +59,29 @@ class FinancialSchemaTest(unittest.TestCase):
                 with self.assertRaises(ValidationError):
                     BalanceRead(available_cents=amount_cents, committed_cents=0)
 
-    def test_opportunity_requires_positive_target_and_non_negative_committed_amount(self):
+    def test_opportunity_requires_positive_target_and_minimum_within_target(self):
         valid_opportunity = {
-            "type": "real_estate",
-            "title": "Edificio en Girona",
-            "description": "Rehabilitación residencial.",
-            "location": "Girona",
+            "type": "equity",
+            "title": "Cervecera en Girona",
+            "description": "Ampliación de la planta de producción.",
+            "location": {"municipality": "Girona", "province": "Girona", "country": "España"},
             "target_amount_cents": 100_000,
+            "minimum_contribution_cents": 1_000,
             "deadline": datetime.now(UTC) + timedelta(days=30),
+            "business": {
+                "sector": "technology",
+                "phase": "growth",
+                "pre_investment_valuation_cents": 900_000,
+            },
         }
+        # Control: sense cap canvi l'esquema accepta les dades.
+        self.assertEqual(OpportunityCreate(**valid_opportunity).target_amount_cents, 100_000)
 
         for changes in (
             {"target_amount_cents": 0},
-            {"committed_cents": -1},
+            {"minimum_contribution_cents": 0},
+            {"minimum_contribution_cents": 100_001},
+            {"deadline": datetime.now(UTC) - timedelta(minutes=1)},
         ):
             with self.subTest(changes=changes):
                 with self.assertRaises(ValidationError):
