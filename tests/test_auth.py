@@ -6,12 +6,14 @@ from uuid import uuid4
 from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, select, text
+from sqlalchemy import create_engine, event, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
 from app.core.security import SESSION_COOKIE, generate_session_token, hash_session_token
 from app.database import engine, get_db
 from app.main import app
+from app.models.promoting_entity import PromotingEntity
 from app.models.session import SESSION_IDLE_TIMEOUT, UserSession
 from app.models.user import User
 from app.models.wallet import Wallet
@@ -55,16 +57,20 @@ class AuthTest(unittest.TestCase):
         first_name="Ana",
         last_name="Example",
         phone="+34612345678",
+        promoting_entity=None,
     ):
+        body: dict[str, object] = {
+            "email": email,
+            "password": password,
+            "first_name": first_name,
+            "last_name": last_name,
+            "phone": phone,
+        }
+        if promoting_entity is not None:
+            body["promoting_entity"] = promoting_entity
         return self.client.post(
             "/api/auth/register",
-            json={
-                "email": email,
-                "password": password,
-                "first_name": first_name,
-                "last_name": last_name,
-                "phone": phone,
-            },
+            json=body,
         )
 
     def login(self, email, password="correct-horse"):
@@ -86,28 +92,125 @@ class AuthTest(unittest.TestCase):
         self.assertLess(abs(actual - expected), timedelta(seconds=5))
 
     def test_register_login_and_me(self):
-        response = self.register("Ana@Example.com")
+        email = f"Ana.{uuid4().hex}@Example.com"
+        response = self.register(email)
         self.assertEqual(response.status_code, 201)
         body = response.json()
-        self.assertEqual(body["email"], "ana@example.com")
+        self.assertEqual(body["email"], email.lower())
         self.assertEqual(body["first_name"], "Ana")
         self.assertEqual(body["last_name"], "Example")
         self.assertEqual(body["phone"], "+34612345678")
+        self.assertFalse(body["is_promoter"])
         self.assertNotIn("password", body)
         self.assertNotIn("hashed_password", body)
         with self.Session() as db:
-            user = db.scalar(select(User).where(User.email == "ana@example.com"))
+            user = db.scalar(select(User).where(User.email == email.lower()))
             self.assertIsNotNone(user.wallet)
             self.assertEqual(user.wallet.available_cents, 0)
 
-        response = self.login("ana@example.com")
+        response = self.login(email.lower())
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["email"], "ana@example.com")
+        self.assertEqual(response.json()["email"], email.lower())
 
         # The client sends the cookie back on its own.
         response = self.client.get("/api/auth/me")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["email"], "ana@example.com")
+        self.assertEqual(response.json()["email"], email.lower())
+        self.assertFalse(response.json()["is_promoter"])
+
+    def test_register_promoter_and_identify_account_after_login(self):
+        email = self.new_email()
+        response = self.register(
+            email,
+            promoting_entity={
+                "legal_name": "  Promocions SL  ",
+                "founding_year": 2018,
+                "location": "Barcelona",
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertTrue(response.json()["is_promoter"])
+
+        with self.Session() as db:
+            user = db.scalar(select(User).where(User.email == email))
+            self.assertIsNotNone(user)
+            self.assertEqual(user.promoting_entity.legal_name, "Promocions SL")
+            self.assertEqual(user.promoting_entity.founding_year, 2018)
+            self.assertEqual(user.promoting_entity.location, "Barcelona")
+
+        login = self.login(email)
+        self.assertEqual(login.status_code, 200)
+        self.assertTrue(login.json()["is_promoter"])
+        self.assertTrue(self.client.get("/api/auth/me").json()["is_promoter"])
+
+    def test_register_promoter_without_optional_year_or_location(self):
+        response = self.register(
+            self.new_email(),
+            promoting_entity={"legal_name": "Promocions SL"},
+        )
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertTrue(response.json()["is_promoter"])
+        user_id = response.json()["id"]
+
+        with self.Session() as db:
+            entity = db.get(PromotingEntity, user_id)
+            self.assertIsNotNone(entity)
+            self.assertIsNone(entity.founding_year)
+            self.assertIsNone(entity.location)
+
+    def test_register_promoter_requires_legal_name(self):
+        for entity_data in ({}, {"legal_name": "   "}):
+            with self.subTest(entity_data=entity_data):
+                response = self.register(
+                    self.new_email(),
+                    promoting_entity=entity_data,
+                )
+                self.assertEqual(response.status_code, 422)
+
+    def test_register_rejects_non_four_digit_or_future_founding_year(self):
+        for year in (999, 10_000, datetime.now(UTC).year + 1):
+            with self.subTest(year=year):
+                response = self.register(
+                    self.new_email(),
+                    promoting_entity={
+                        "legal_name": "Promocions SL",
+                        "founding_year": year,
+                    },
+                )
+                self.assertEqual(response.status_code, 422)
+
+    def test_promoter_registration_rolls_back_user_and_wallet_on_entity_failure(self):
+        email = self.new_email()
+        # Raó social pròpia: altres proves de la classe registren «Promocions SL».
+        legal_name = f"Rollback {uuid4().hex} SL"
+
+        def fail_entity_insert(mapper, connection, target):
+            raise IntegrityError(
+                "insert promoting_entities", {}, RuntimeError("forced failure")
+            )
+
+        event.listen(PromotingEntity, "before_insert", fail_entity_insert)
+        try:
+            response = self.register(
+                email,
+                promoting_entity={"legal_name": legal_name},
+            )
+        finally:
+            event.remove(PromotingEntity, "before_insert", fail_entity_insert)
+
+        self.assertEqual(response.status_code, 409)
+        with self.Session() as db:
+            self.assertIsNone(db.scalar(select(User).where(User.email == email)))
+            self.assertIsNone(
+                db.scalar(select(Wallet).join(User).where(User.email == email)),
+            )
+            self.assertIsNone(
+                db.scalar(
+                    select(PromotingEntity).where(
+                        PromotingEntity.legal_name == legal_name
+                    )
+                )
+            )
 
     def test_login_creates_session_and_sets_secure_cookie(self):
         email = self.new_email()
@@ -143,8 +246,9 @@ class AuthTest(unittest.TestCase):
         self.assertEqual(len(self.sessions_of(email)), 2)
 
     def test_duplicate_email_is_rejected(self):
-        self.assertEqual(self.register("dup@example.com").status_code, 201)
-        self.assertEqual(self.register("DUP@example.com").status_code, 409)
+        email = self.new_email()
+        self.assertEqual(self.register(email).status_code, 201)
+        self.assertEqual(self.register(email.upper()).status_code, 409)
 
     def test_invalid_registration_data(self):
         self.assertEqual(self.register("not-an-email").status_code, 422)

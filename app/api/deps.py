@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.security import SESSION_COOKIE, hash_session_token
 from app.database import get_db
-from app.models.session import SESSION_IDLE_TIMEOUT, UserSession
+from app.models.session import UserSession
 from app.models.user import User
 
 DbSession = Annotated[Session, Depends(get_db)]
@@ -66,3 +66,21 @@ def get_current_user(request: Request, db: DbSession) -> User:
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+def get_optional_current_user(request: Request, db: DbSession) -> User | None:
+    """Obté l'usuari de la cookie si és vàlida sense exigir autenticació."""
+    token = request.cookies.get(SESSION_COOKIE)
+    if token is None:
+        return None
+
+    now = datetime.now(UTC)
+    session = db.scalar(
+        select(UserSession).where(UserSession.token == hash_session_token(token))
+    )
+    if session is None or session.expires_at <= now:
+        return None
+    return db.get(User, session.user_id)
+
+
+OptionalCurrentUser = Annotated[User | None, Depends(get_optional_current_user)]

@@ -6,10 +6,15 @@ Verifiques que una issue o PR compleix els seus criteris d'acceptació, reforces
 
 1. **Recull els criteris**: `gh issue view <n> -R UB-ES-F4-2026/backend` i, si hi ha PR, `gh pr view <n> -R UB-ES-F4-2026/backend --comments` i `gh pr diff <n> -R UB-ES-F4-2026/backend`. Fes una llista numerada amb cada criteri d'acceptació: és la plantilla del teu informe.
 2. **Llegeix el diff** amb la llista de revisió de sota. Cada punt que falla és una troballa.
-3. **Executa la CI en local** segons [CI.md](../CI.md): entorn `compose.ci.yaml` i tests complets. Un test que falla és una troballa amb la sortida literal.
+3. **Executa la CI en local** segons [CI.md](../CI.md): Ruff, entorn `compose.ci.yaml` i tests complets. Un error de Ruff o un test que falla és una troballa amb la sortida literal.
 4. **Prova cada criteri** contra l'API en marxa (`http://localhost:8000/api/docs` o `curl`), incloent-hi el cas d'error de cada un: sense sessió, dades invàlides, recurs d'un altre usuari, límits.
 5. **Afegeix tests** per als criteris que no en tenen, amb el patró de [backend.md](backend.md#tests). Si el canvi és teu, al mateix PR; si revises el PR d'una altra persona, com a suggeriment o commit a la seva branca segons el que t'hagin demanat.
 6. **Informa** amb el format de sota. Una troballa que bloqueja és un comentari al PR; un bug fora de l'abast del PR és una issue nova amb l'etiqueta `bug`.
+
+Per definir o ampliar cobertura, segueix també
+[`docs/qa/INTEGRATION_TESTING.md`](../docs/qa/INTEGRATION_TESTING.md). Una ruta
+amb persistència, autenticació, migració o SQL ha de tenir una prova
+d'integració amb PostgreSQL temporal, no una base de dades simulada.
 
 ## Llista de revisió
 
@@ -21,6 +26,7 @@ Verifiques que una issue o PR compleix els seus criteris d'acceptació, reforces
 - Els camps dels esquemes `*Read` coincideixen amb el que el frontend consumeix (`../frontend/src/store/*.ts`): una diferència de nom o de forma és una troballa encara que els tests passin, i s'obre o s'enllaça al repositori que l'ha de corregir.
 - Cap secret, `.env`, token ni dada personal al codi, als tests ni als logs enganxats al PR.
 - Variables d'entorn noves presents a tots els Compose i a `production.env.example`.
+- Seed E2E al dia segons [Seed E2E](backend.md#seed-e2e): si el diff toca esquemes `*Create`, models, migracions o regles de visibilitat i `seed_e2e_testing_data.py` no canvia, el PR ha de justificar-ho. Executa el seed i els E2E en local (o llegeix el comentari `Resultados E2E de Playwright` en una PR cap a `dev`); un E2E que falla per dades absents és una troballa del PR del backend, encara que el test sigui del frontend.
 
 ## Format de l'informe
 

@@ -9,6 +9,11 @@ x-db-env: &db-env
   DB_POOL_SIZE: "2"
   DB_MAX_OVERFLOW: "1"
 
+x-backend-env: &backend-env
+  <<: *db-env
+  STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:?Required}
+  STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:?Required}
+
 x-logging: &logging
   driver: json-file
   options:
@@ -45,7 +50,9 @@ services:
 
   backend:
     image: ${BACKEND_IMAGE:?Use a tested image digest}
-    environment: *db-env
+    environment: *backend-env
+    volumes:
+      - media_data:/app/media
     depends_on:
       db:
         condition: service_healthy
@@ -73,3 +80,4 @@ services:
 
 volumes:
   postgres_data:
+  media_data:

@@ -3,7 +3,7 @@ name: Backend CI
 on:
   push:
   pull_request:
-    branches: [main]
+    branches: [dev, main]
   workflow_dispatch:
 
 permissions:
@@ -11,12 +11,54 @@ permissions:
 
 concurrency:
   group: backend-ci-${{ github.workflow }}-${{ github.ref }}
-  # Never cancel a main workflow while it is mutating the server.
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  # Never cancel a main or release workflow while it is mutating the server.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/heads/release/') }}
 
 jobs:
+  lint:
+    name: Backend static analysis (Ruff)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Run Ruff
+        uses: astral-sh/ruff-action@278981a28ce3188b1e39527901f38254bf3aac89 # v4.1.0
+        with:
+          version: "0.17.4"
+          args: check --output-format github
+
+  backend-unit-coverage:
+    name: Backend unit tests and coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Build isolated test image
+        run: docker build --tag backend-ci .
+      - name: Run unit tests with branch coverage
+        run: |
+          docker create --name backend-unit-coverage --entrypoint sh \
+            --env POSTGRES_DB=fintech_unit --env POSTGRES_USER=fintech_unit \
+            --env POSTGRES_PASSWORD=unit_disposable_password --env DB_HOST=127.0.0.1 --env DB_PORT=5432 backend-ci \
+            -c "COVERAGE_FILE=/tmp/.coverage coverage run --branch --source=app.core,app.schemas,app.model_registry -m unittest discover -s tests -p 'test_name_search.py' -v && COVERAGE_FILE=/tmp/.coverage coverage run --branch --append -m unittest discover -s tests -p 'test_*_unit.py' -v && COVERAGE_FILE=/tmp/.coverage coverage report -m && COVERAGE_FILE=/tmp/.coverage coverage xml -o /tmp/coverage.xml"
+          docker start -a backend-unit-coverage
+          docker cp backend-unit-coverage:/tmp/coverage.xml coverage-backend.xml
+      - name: Upload backend coverage report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: backend-unit-coverage
+          path: coverage-backend.xml
+          if-no-files-found: error
+      - name: Remove temporary coverage container
+        if: always()
+        run: docker rm -f backend-unit-coverage || true
+
   backend-checks:
-    name: Backend build, migrations and health
+    name: Backend integration, migrations and health
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -25,8 +67,10 @@ jobs:
           persist-credentials: false
       - name: Build and start isolated services
         run: docker compose -f compose.ci.yaml up --build --wait --wait-timeout 180
-      - name: Run backend tests
-        run: docker compose -f compose.ci.yaml exec -T backend python -m unittest discover -s tests -v
+      - name: Run backend integration tests
+        # Ordre aleatori amb llavor visible: una prova que depèn d'una altra falla aquí,
+        # i el mateix TEST_ORDER_SEED la reprodueix en local.
+        run: docker compose -f compose.ci.yaml exec -T -e TEST_ORDER_SEED="$GITHUB_RUN_ID" backend python tests/run_integration.py
       - name: Show service logs on failure
         if: failure()
         run: docker compose -f compose.ci.yaml logs --no-color
@@ -47,6 +91,7 @@ jobs:
           bash -n scripts/deploy-ci.sh
           python3 scripts/test_deploy.py
           docker compose --env-file production.env.example -f compose.production.yaml config --quiet
+          docker compose --env-file production.env.example -f compose.production.yaml -f compose.staging.yaml config --quiet
       - name: Build production image and migrate isolated database
         run: docker compose -f compose.production-ci.yaml up --build --wait --wait-timeout 180
       - name: Run tests against production backend
@@ -61,18 +106,31 @@ jobs:
   required-checks:
     name: Backend required checks
     if: always()
-    needs: [backend-checks, production-checks]
+    needs: [lint, backend-unit-coverage, backend-checks, production-checks]
     runs-on: ubuntu-latest
     steps:
+      # main only receives release/* and hotfix/*; this check is already required on main.
+      - name: Check PR source branch
+        if: github.event_name == 'pull_request' && github.base_ref == 'main'
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          case "$HEAD_REF" in
+            release/*|hotfix/*) ;;
+            *) echo "::error::Las PR hacia main solo pueden salir de release/* o hotfix/* (esta sale de $HEAD_REF)."; exit 1 ;;
+          esac
       - env:
-          DEVELOPMENT: ${{ needs.backend-checks.result }}
+          LINT: ${{ needs.lint.result }}
+          UNIT: ${{ needs.backend-unit-coverage.result }}
+          INTEGRATION: ${{ needs.backend-checks.result }}
           PRODUCTION: ${{ needs.production-checks.result }}
-        run: test "$DEVELOPMENT" = success && test "$PRODUCTION" = success
+        run: test "$LINT" = success && test "$UNIT" = success && test "$INTEGRATION" = success && test "$PRODUCTION" = success
 
   publish:
     name: Publish backend image
     needs: required-checks
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.required-checks.result == 'success'
+    # main never builds: it deploys the image published from the merged release/* or hotfix/* branch.
+    if: github.event_name == 'push' && (startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/heads/hotfix/')) && needs.required-checks.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
@@ -119,10 +177,67 @@ jobs:
           printf 'image=%s\n' "$digest" >> "$GITHUB_OUTPUT"
           printf '### Backend image\nCommit: `%s`\n\n`%s`\n' "$GITHUB_SHA" "$digest" >> "$GITHUB_STEP_SUMMARY"
 
+  promote:
+    name: Find tested backend image
+    needs: required-checks
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.required-checks.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+          # The merge commit and both parents, to compare main with the merged branch.
+          fetch-depth: 2
+      - name: Resolve digest published for the merged branch
+        id: image
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          source_sha="$(git rev-parse --verify --quiet 'HEAD^2')" || {
+            echo "::error::main no es un merge commit (¿PR fusionada con squash o rebase?): no hay ninguna rama fusionada cuya imagen desplegar. Las PR hacia main se fusionan con «Create a merge commit»."
+            exit 1
+          }
+          git diff --quiet "$source_sha" HEAD || {
+            echo "::error::main no coincide con el commit fusionado $source_sha: no se despliega nada"
+            exit 1
+          }
+
+          trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          image="ghcr.io/${GITHUB_REPOSITORY,,}:$source_sha"
+          docker pull "$image" || {
+            echo "::error::No hay imagen publicada para $source_sha. Espera a que termine la CI de la rama fusionada y vuelve a ejecutar este workflow."
+            exit 1
+          }
+
+          repository="ghcr.io/${GITHUB_REPOSITORY,,}"
+          digest="$(
+            docker image inspect "$image" |
+              jq -r --arg prefix "$repository@sha256:" \
+                '.[0].RepoDigests[] | select(startswith($prefix))' |
+              head -n 1
+          )"
+
+          [[ "$digest" =~ ^ghcr.io/ub-es-f4-2026/backend@sha256:[a-f0-9]{64}$ ]] || {
+            echo "::error::No se ha encontrado el digest publicado en GHCR"
+            exit 1
+          }
+
+          printf 'image=%s\n' "$digest" >> "$GITHUB_OUTPUT"
+          printf '### Backend image\nCommit fusionado: `%s`\n\n`%s`\n' "$source_sha" "$digest" >> "$GITHUB_STEP_SUMMARY"
+
   deploy:
     name: Deploy backend
-    needs: [required-checks, publish]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true' && needs.required-checks.result == 'success' && needs.publish.result == 'success'
+    environment: production
+    needs: [required-checks, promote]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true' && needs.required-checks.result == 'success' && needs.promote.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:
@@ -133,6 +248,31 @@ jobs:
           persist-credentials: false
       - name: Deploy exact published digest
         env:
+          COMPONENT: backend
+          IMAGE: ${{ needs.promote.outputs.image }}
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT }}
+          DEPLOY_KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/deploy-ci.sh
+
+  deploy-staging:
+    name: Deploy backend to staging
+    environment: staging
+    needs: [required-checks, publish]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/') && vars.STAGING_DEPLOY_ENABLED == 'true' && needs.required-checks.result == 'success' && needs.publish.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Deploy exact published digest to staging
+        env:
+          DEPLOY_ENVIRONMENT: staging
           COMPONENT: backend
           IMAGE: ${{ needs.publish.outputs.image }}
           DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
