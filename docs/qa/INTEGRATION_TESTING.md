@@ -29,6 +29,27 @@ cartera i migracions s'executa com a integració. `test_name_search.py` i els
 fitxers acabats en `_unit.py` es reserven explícitament per al job unitari fins
 que els fitxers antics es vagin reanomenant de forma oportunista.
 
+### Independència
+
+Les proves d'una classe comparteixen la base de dades que crea `setUpClass`,
+de manera que la independència depèn de com s'escriu cada prova:
+
+- Cada prova crea els seus usuaris, saldos i oportunitats, amb claus úniques
+  generades (`uuid4`): cap correu, token o identificador de Stripe fix.
+- Una asserció sobre una taula o el catàleg sencers només és vàlida si la
+  classe restableix aquest estat a `setUp`, com `tests/test_opportunities.py`
+  i `tests/test_opportunity_search.py`.
+- El que es canvia de global (`app.dependency_overrides`, `media.MEDIA_ROOT`)
+  es restaura amb `addCleanup` o `try/finally`, també si la prova falla.
+
+`tests/run_integration.py` barreja les classes i les proves de cada classe
+quan rep `TEST_ORDER_SEED`. La CI el passa a cada execució i l'escriu al
+registre; per reproduir un error d'ordre en local:
+
+```bash
+docker compose -f compose.ci.yaml exec -T -e TEST_ORDER_SEED=<llavor> backend python tests/run_integration.py
+```
+
 ## Frontend
 
 Una prova d'integració de frontend uneix pàgina o component, store, router i
