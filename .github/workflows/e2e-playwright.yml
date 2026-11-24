@@ -67,6 +67,9 @@ jobs:
           echo "PGADMIN_PORT=5050" >> .env
           echo "PGADMIN_DEFAULT_EMAIL=admin@f4.local" >> .env
           echo "PGADMIN_DEFAULT_PASSWORD=admin" >> .env
+          # Secreto desechable solo para los E2E: el seed y los tests ingresan saldo
+          # enviando al webhook de Stripe un pago firmado con este valor.
+          echo "STRIPE_WEBHOOK_SECRET=whsec_e2e_only_not_a_real_secret" >> .env
           echo "FRONTEND_PATH=../frontend" >> .env
 
       # 4. Levantar la infraestructura efímera

@@ -29,7 +29,13 @@ services:
   backend:
     build:
       context: .
-    environment: *database-environment
+    environment:
+      <<: *database-environment
+      # Secret d'un sol ús, només d'aquest entorn: el seed i els tests ingressen saldo
+      # enviant al webhook de Stripe un pagament signat amb aquest valor (el mateix
+      # per defecte a seed_e2e_testing_data.py i a frontend/e2e/support/wallet.ts).
+      # No és cap secret real ni s'ha de fer servir fora dels E2E.
+      STRIPE_WEBHOOK_SECRET: whsec_e2e_only_not_a_real_secret
     depends_on:
       db:
         condition: service_healthy

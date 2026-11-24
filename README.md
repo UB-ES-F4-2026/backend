@@ -377,7 +377,7 @@ Cada execució:
 
 1. Atura qualsevol resta d'una execució anterior, de manera que la base de dades comença **sempre buida**.
 2. Arrenca PostgreSQL, el backend (que aplica les migracions) i el frontend.
-3. Crea les dades de prova automàticament amb `seed_e2e_testing_data.py`. No cal introduir cap dada a mà.
+3. Crea les dades de prova automàticament amb `seed_e2e_testing_data.py`. No cal introduir cap dada a mà. El saldo dels comptes de prova s'ingressa pel webhook de Stripe amb un pagament signat amb el secret d'un sol ús que `compose.e2e.yaml` dona al backend (`whsec_e2e_only_not_a_real_secret`, que no és cap secret real).
 4. Executa Playwright i atura l'entorn en acabar.
 
 **L'informe HTML queda a `e2e-report/playwright-report/index.html`**, també si els tests fallen. Obre'l amb el navegador. Les traces i captures dels tests fallits són a `e2e-report/test-results/`. La carpeta `e2e-report/` no es versiona i cada execució la substitueix.
