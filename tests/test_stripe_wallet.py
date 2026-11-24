@@ -53,6 +53,9 @@ class StripeWalletTest(unittest.TestCase):
 
     def setUp(self):
         self.client = TestClient(app, base_url="https://testserver")
+        # Identificadors de Stripe propis de cada prova: són únics a la base de dades.
+        self.event_id = f"evt_{uuid4().hex}"
+        self.payment_intent_id = f"pi_{uuid4().hex}"
         with self.Session() as db:
             user = User(
                 email=f"{uuid4().hex}@example.com",
@@ -184,11 +187,11 @@ class StripeWalletTest(unittest.TestCase):
 
     def payment_event(self) -> dict:
         return {
-            "id": "evt_succeeded",
+            "id": self.event_id,
             "type": "payment_intent.succeeded",
             "data": {
                 "object": {
-                    "id": "pi_succeeded",
+                    "id": self.payment_intent_id,
                     "amount_received": 5000,
                     "currency": "eur",
                     "metadata": {"user_id": str(self.user_id)},

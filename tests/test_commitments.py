@@ -367,16 +367,19 @@ class ReserveFundsAtomicityTest(CommitmentsTestCase):
             )
             return opportunity.id
 
-        with self.Session() as db:
-            with self.assertRaises(InsufficientFunds):
-                create_with_initial_contribution(db, 300_00)
-            db.rollback()
-            rejected = db.scalar(
+        def count_drafts(db) -> int:
+            return db.scalar(
                 select(func.count()).select_from(Opportunity).where(
                     Opportunity.status == OpportunityStatus.DRAFT
                 )
             )
-        self.assertEqual(rejected, 0)
+
+        with self.Session() as db:
+            drafts_before = count_drafts(db)
+            with self.assertRaises(InsufficientFunds):
+                create_with_initial_contribution(db, 300_00)
+            db.rollback()
+            self.assertEqual(count_drafts(db), drafts_before)
         self.assertEqual(self.balances(user_id), (250_00, 0))
 
         with self.Session() as db:

@@ -52,9 +52,10 @@ class SessionsTest(unittest.TestCase):
     def test_duplicate_token_is_rejected(self):
         with self.Session() as db:
             user = self.create_user(db)
-            db.add(UserSession(token="duplicate", user_id=user.id))
+            token = uuid4().hex
+            db.add(UserSession(token=token, user_id=user.id))
             db.commit()
-            db.add(UserSession(token="duplicate", user_id=user.id))
+            db.add(UserSession(token=token, user_id=user.id))
             with self.assertRaises(IntegrityError):
                 db.commit()
 

@@ -10,7 +10,7 @@ from uuid import uuid4
 from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, func, select, text
+from sqlalchemy import create_engine, delete, func, select, text
 from sqlalchemy.orm import sessionmaker
 
 from app.api.deps import get_current_user, get_optional_current_user
@@ -77,6 +77,22 @@ class OpportunitiesTest(unittest.TestCase):
             connection.execute(text(f'DROP DATABASE "{cls.database}" WITH (FORCE)'))
         media.MEDIA_ROOT = cls.previous_media_root
         cls.media_directory.cleanup()
+
+    def setUp(self):
+        # Cada prova comença sense oportunitats, compromisos ni saldo d'una altra
+        # prova, i amb la sessió compartida neta encara que l'anterior hagi fallat.
+        self.session.rollback()
+        self.session.execute(delete(Commitment))
+        self.session.execute(delete(Opportunity))
+        self.session.execute(delete(Wallet))
+        self.session.commit()
+        overrides = dict(app.dependency_overrides)
+        self.addCleanup(self.restore_overrides, overrides)
+
+    @staticmethod
+    def restore_overrides(overrides):
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(overrides)
 
     def opportunity_body(self, **changes):
         body = {
@@ -178,7 +194,7 @@ class OpportunitiesTest(unittest.TestCase):
         self.assertNotIn(body["id"], [item["id"] for item in catalog.json()])
 
     def test_create_opportunity_requires_promoting_entity(self):
-        user = User(email="no-promoter@example.com", hashed_password="x" * 60)
+        user = User(email=f"{uuid4().hex}@example.com", hashed_password="x" * 60)
         self.session.add(user)
         self.session.commit()
         app.dependency_overrides[get_current_user] = lambda: user
@@ -447,9 +463,7 @@ class OpportunitiesTest(unittest.TestCase):
         )
         self.assertEqual(opportunity.committed_cents, 500000)
         self.assertEqual(opportunity.status, OpportunityStatus.DRAFT)
-        self.session.delete(commitment)
-        self.session.delete(opportunity)
-        self.session.commit()
+        self.assertEqual(commitment.amount_cents, 500000)
 
     def test_business_detail_calculates_equity_offered(self):
         response = self.post_opportunity(
@@ -466,9 +480,6 @@ class OpportunitiesTest(unittest.TestCase):
         detail = self.client.get(f"/api/opportunities/{opportunity_id}")
         self.assertEqual(detail.status_code, 200)
         self.assertEqual(Decimal(detail.json()["business"]["equity_offered"]), Decimal("10"))
-        opportunity.status = OpportunityStatus.DRAFT
-        opportunity.date_published = None
-        self.session.commit()
 
     def test_opportunity_images_keep_their_order_and_access_rules(self):
         response = self.post_opportunity(
@@ -586,9 +597,6 @@ class OpportunitiesTest(unittest.TestCase):
         self.assertEqual([item["id"] for item in response.json()], [available.id])
 
     def test_empty_catalog_returns_empty_list(self):
-        self.session.query(Opportunity).delete()
-        self.session.commit()
-
         response = self.client.get("/api/opportunities")
 
         self.assertEqual(response.status_code, 200)

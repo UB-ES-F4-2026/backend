@@ -92,10 +92,11 @@ class AuthTest(unittest.TestCase):
         self.assertLess(abs(actual - expected), timedelta(seconds=5))
 
     def test_register_login_and_me(self):
-        response = self.register("Ana@Example.com")
+        email = f"Ana.{uuid4().hex}@Example.com"
+        response = self.register(email)
         self.assertEqual(response.status_code, 201)
         body = response.json()
-        self.assertEqual(body["email"], "ana@example.com")
+        self.assertEqual(body["email"], email.lower())
         self.assertEqual(body["first_name"], "Ana")
         self.assertEqual(body["last_name"], "Example")
         self.assertEqual(body["phone"], "+34612345678")
@@ -103,18 +104,18 @@ class AuthTest(unittest.TestCase):
         self.assertNotIn("password", body)
         self.assertNotIn("hashed_password", body)
         with self.Session() as db:
-            user = db.scalar(select(User).where(User.email == "ana@example.com"))
+            user = db.scalar(select(User).where(User.email == email.lower()))
             self.assertIsNotNone(user.wallet)
             self.assertEqual(user.wallet.available_cents, 0)
 
-        response = self.login("ana@example.com")
+        response = self.login(email.lower())
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["email"], "ana@example.com")
+        self.assertEqual(response.json()["email"], email.lower())
 
         # The client sends the cookie back on its own.
         response = self.client.get("/api/auth/me")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["email"], "ana@example.com")
+        self.assertEqual(response.json()["email"], email.lower())
         self.assertFalse(response.json()["is_promoter"])
 
     def test_register_promoter_and_identify_account_after_login(self):
@@ -180,6 +181,8 @@ class AuthTest(unittest.TestCase):
 
     def test_promoter_registration_rolls_back_user_and_wallet_on_entity_failure(self):
         email = self.new_email()
+        # Raó social pròpia: altres proves de la classe registren «Promocions SL».
+        legal_name = f"Rollback {uuid4().hex} SL"
 
         def fail_entity_insert(mapper, connection, target):
             raise IntegrityError(
@@ -190,7 +193,7 @@ class AuthTest(unittest.TestCase):
         try:
             response = self.register(
                 email,
-                promoting_entity={"legal_name": "Promocions SL"},
+                promoting_entity={"legal_name": legal_name},
             )
         finally:
             event.remove(PromotingEntity, "before_insert", fail_entity_insert)
@@ -204,7 +207,7 @@ class AuthTest(unittest.TestCase):
             self.assertIsNone(
                 db.scalar(
                     select(PromotingEntity).where(
-                        PromotingEntity.legal_name == "Promocions SL"
+                        PromotingEntity.legal_name == legal_name
                     )
                 )
             )
@@ -243,8 +246,9 @@ class AuthTest(unittest.TestCase):
         self.assertEqual(len(self.sessions_of(email)), 2)
 
     def test_duplicate_email_is_rejected(self):
-        self.assertEqual(self.register("dup@example.com").status_code, 201)
-        self.assertEqual(self.register("DUP@example.com").status_code, 409)
+        email = self.new_email()
+        self.assertEqual(self.register(email).status_code, 201)
+        self.assertEqual(self.register(email.upper()).status_code, 409)
 
     def test_invalid_registration_data(self):
         self.assertEqual(self.register("not-an-email").status_code, 422)
