@@ -185,6 +185,7 @@ jobs:
     timeout-minutes: 10
     outputs:
       image: ${{ steps.image.outputs.image }}
+      revision: ${{ steps.image.outputs.revision }}
     permissions:
       contents: read
       packages: read
@@ -231,6 +232,7 @@ jobs:
           }
 
           printf 'image=%s\n' "$digest" >> "$GITHUB_OUTPUT"
+          printf 'revision=%s\n' "$source_sha" >> "$GITHUB_OUTPUT"
           printf '### Backend image\nCommit fusionado: `%s`\n\n`%s`\n' "$source_sha" "$digest" >> "$GITHUB_STEP_SUMMARY"
 
   deploy:
@@ -250,6 +252,8 @@ jobs:
         env:
           COMPONENT: backend
           IMAGE: ${{ needs.promote.outputs.image }}
+          # La imatge porta el commit de la branca fusionada, no el del merge a main.
+          DEPLOY_REVISION: ${{ needs.promote.outputs.revision }}
           DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
           DEPLOY_USER: ${{ vars.DEPLOY_USER }}
           DEPLOY_PORT: ${{ vars.DEPLOY_PORT }}

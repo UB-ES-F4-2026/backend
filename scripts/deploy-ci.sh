@@ -10,6 +10,10 @@ done
 [[ "$COMPONENT" == backend || "$COMPONENT" == frontend ]]
 [[ "$IMAGE" =~ ^ghcr.io/ub-es-f4-2026/$COMPONENT@sha256:[a-f0-9]{64}$ ]]
 [[ "$GITHUB_SHA" =~ ^[a-f0-9]{40}$ ]]
+# A main, deploy.py ha de rebre el commit amb què es va construir la imatge (el de la
+# branca fusionada), no el merge commit: si no, rebutja la imatge.
+revision="${DEPLOY_REVISION:-$GITHUB_SHA}"
+[[ "$revision" =~ ^[a-f0-9]{40}$ ]]
 [[ "$GITHUB_RUN_NUMBER" =~ ^[0-9]+$ ]]
 # Producció manté exactament l'ordre anterior; staging executa la seva còpia de deploy.py.
 case "${DEPLOY_ENVIRONMENT:-production}" in
@@ -30,5 +34,5 @@ ssh -F /dev/null -T -p "$DEPLOY_PORT" -i "$ssh_dir/key" \
   -o "UserKnownHostsFile=$ssh_dir/known_hosts" -o GlobalKnownHostsFile=/dev/null \
   -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
   "$DEPLOY_USER@$DEPLOY_HOST" \
-  "$remote_command '$COMPONENT' '$IMAGE' '$GITHUB_SHA' '$GITHUB_RUN_NUMBER'" < /dev/null
-printf '### Deployment verified\nEnvironment: %s\nComponent: %s\nCommit: %s\nImage: %s\n' "${DEPLOY_ENVIRONMENT:-production}" "$COMPONENT" "$GITHUB_SHA" "$IMAGE" >> "$GITHUB_STEP_SUMMARY"
+  "$remote_command '$COMPONENT' '$IMAGE' '$revision' '$GITHUB_RUN_NUMBER'" < /dev/null
+printf '### Deployment verified\nEnvironment: %s\nComponent: %s\nCommit: %s\nImage: %s\n' "${DEPLOY_ENVIRONMENT:-production}" "$COMPONENT" "$revision" "$IMAGE" >> "$GITHUB_STEP_SUMMARY"
